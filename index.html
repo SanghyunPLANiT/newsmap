@@ -8,7 +8,7 @@
 <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-:root {
+:root, [data-theme="dark"] {
   --ink:    #0f0e0c;
   --paper:  #f0ebe0;
   --accent: #c8392b;
@@ -16,8 +16,54 @@
   --surf:   #1a1917;
   --surf2:  #242220;
   --border: #2e2c29;
+  --map-bg: #0f0e0c;
+  --art-text: #c5c0b8;
   --list-w: 320px;
   --art-w:  420px;
+}
+[data-theme="light"] {
+  --ink:    #ffffff;
+  --paper:  #1a1a1a;
+  --accent: #c8392b;
+  --muted:  #777777;
+  --surf:   #f5f5f5;
+  --surf2:  #eaeaea;
+  --border: #d0d0d0;
+  --map-bg: #e8e8e8;
+  --art-text: #444444;
+}
+[data-theme="sepia"] {
+  --ink:    #f4ecd8;
+  --paper:  #2c2416;
+  --accent: #b5451b;
+  --muted:  #8a7d6b;
+  --surf:   #efe5cc;
+  --surf2:  #e6dbbf;
+  --border: #d4c9a8;
+  --map-bg: #f4ecd8;
+  --art-text: #4a3f2f;
+}
+[data-theme="midnight"] {
+  --ink:    #0d1117;
+  --paper:  #c9d1d9;
+  --accent: #58a6ff;
+  --muted:  #6e7681;
+  --surf:   #161b22;
+  --surf2:  #21262d;
+  --border: #30363d;
+  --map-bg: #0d1117;
+  --art-text: #8b949e;
+}
+[data-theme="solarized"] {
+  --ink:    #002b36;
+  --paper:  #eee8d5;
+  --accent: #cb4b16;
+  --muted:  #657b83;
+  --surf:   #073642;
+  --surf2:  #0a4050;
+  --border: #2a5966;
+  --map-bg: #002b36;
+  --art-text: #93a1a1;
 }
 html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(--paper); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
 #app  { display: flex; flex-direction: column; height: 100vh; }
@@ -47,6 +93,17 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
 }
 #text-size button:hover { color: var(--paper); border-color: var(--muted); }
 
+/* ── MAP STYLE SELECTOR ── */
+#map-style {
+  height: 24px; padding: 0 6px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); font-size: .65rem; border-radius: 3px; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23777'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 5px center; padding-right: 16px;
+}
+#map-style:hover { color: var(--paper); border-color: var(--muted); }
+#map-style option { background: var(--bg); color: var(--paper); }
+
 /* ── LEFT PANEL ── */
 #list-panel { width: var(--list-w); flex-shrink: 0; display: flex; flex-direction: column; background: var(--surf); border-right: 1px solid var(--border); overflow: hidden; z-index: 10; }
 #list-hdr { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: .6rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
@@ -72,7 +129,7 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
 /* ── MAP ── */
 #map-wrap { flex: 1; position: relative; min-width: 0; }
 #map { width: 100%; height: 100%; }
-.leaflet-container { background: #0f0e0c !important; }
+.leaflet-container { background: var(--map-bg) !important; }
 .ntip.leaflet-tooltip { background: var(--surf); border: 1px solid var(--border); border-radius: 3px; color: var(--paper); font-size: .75rem; padding: 5px 9px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
 .ntip.leaflet-tooltip::before { display: none; }
 
@@ -137,7 +194,7 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
 .art-loc   { display: inline-flex; align-items: center; gap: 5px; margin: 8px 18px 0; font-size: .7rem; color: var(--muted); background: var(--surf2); padding: 4px 9px; border-radius: 12px; }
 .art-img   { margin: 12px 18px 0; border-radius: 4px; overflow: hidden; max-height: 200px; }
 .art-img img { width: 100%; height: 200px; object-fit: cover; }
-.art-text  { padding: 14px 18px; font-size: .88rem; line-height: 1.75; color: #c5c0b8; }
+.art-text  { padding: 14px 18px; font-size: .88rem; line-height: 1.75; color: var(--art-text); }
 .art-text p { margin-bottom: 12px; }
 .art-link  { display: inline-flex; align-items: center; gap: 6px; margin: 4px 18px 28px; padding: 8px 16px; border: 1px solid var(--accent); color: var(--accent); text-decoration: none; border-radius: 3px; font-size: .72rem; letter-spacing: .05em; }
 .art-link:hover { background: var(--accent); color: #fff; }
@@ -179,6 +236,14 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
     <div id="logo">GLOBAL<span>PULSE</span></div>
     <div id="hdr-status">Loading…</div>
     <input id="search" type="text" placeholder="Search stories…" autocomplete="off" spellcheck="false" />
+    <select id="map-style">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="satellite">Satellite</option>
+      <option value="topo">Terrain</option>
+      <option value="voyager">Voyager</option>
+    </select>
+    <div id="text-size"><button id="ts-down">A-</button><button id="ts-up">A+</button></div>
     <button id="btn-rf">↻ Refresh</button>
   </header>
   <div id="main">
@@ -894,9 +959,25 @@ async function fetchLocalNews(queryLabel, vp) {
 // MAP
 // ══════════════════════════════════════════════
 const map = L.map('map', { center:[20,10], zoom:2, zoomControl:true });
-L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
-  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19
-}).addTo(map);
+
+const TILE_STYLES = {
+  dark:      { url:'https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', attr:'&copy; OpenStreetMap &copy; CARTO', max:19 },
+  light:     { url:'https://{s}.basemaps.cartocdn.com/light_all/{z}/{x}/{y}{r}.png', attr:'&copy; OpenStreetMap &copy; CARTO', max:19 },
+  satellite: { url:'https://server.arcgisonline.com/ArcGIS/rest/services/World_Imagery/MapServer/tile/{z}/{y}/{x}', attr:'&copy; Esri', max:18 },
+  topo:      { url:'https://{s}.tile.opentopomap.org/{z}/{x}/{y}.png', attr:'&copy; OpenStreetMap &copy; OpenTopoMap', max:17 },
+  voyager:   { url:'https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', attr:'&copy; OpenStreetMap &copy; CARTO', max:19 },
+};
+const savedStyle = localStorage.getItem('map-style') || 'dark';
+let tileLayer = L.tileLayer(TILE_STYLES[savedStyle].url, { attribution: TILE_STYLES[savedStyle].attr, maxZoom: TILE_STYLES[savedStyle].max }).addTo(map);
+document.getElementById('map-style').value = savedStyle;
+
+document.getElementById('map-style').addEventListener('change', (e) => {
+  const s = TILE_STYLES[e.target.value];
+  if (!s) return;
+  map.removeLayer(tileLayer);
+  tileLayer = L.tileLayer(s.url, { attribution: s.attr, maxZoom: s.max }).addTo(map);
+  localStorage.setItem('map-style', e.target.value);
+});
 
 const pinsLayer  = L.layerGroup().addTo(map);
 const linesLayer = L.layerGroup().addTo(map);
@@ -1605,6 +1686,22 @@ document.getElementById('btn-rf').addEventListener('click', async () => {
   if (isFetching) return;
   loadByViewport(true);
 });
+
+// ══════════════════════════════════════════════
+// TEXT SIZE
+// ══════════════════════════════════════════════
+{
+  const SIZES = [11, 12, 13, 14, 16, 18];
+  let idx = parseInt(localStorage.getItem('ts-idx') ?? '2');
+  if (idx < 0 || idx >= SIZES.length) idx = 2;
+  document.documentElement.style.fontSize = SIZES[idx] + 'px';
+  document.getElementById('ts-down').addEventListener('click', () => {
+    if (idx > 0) { idx--; document.documentElement.style.fontSize = SIZES[idx] + 'px'; localStorage.setItem('ts-idx', idx); }
+  });
+  document.getElementById('ts-up').addEventListener('click', () => {
+    if (idx < SIZES.length - 1) { idx++; document.documentElement.style.fontSize = SIZES[idx] + 'px'; localStorage.setItem('ts-idx', idx); }
+  });
+}
 
 // ══════════════════════════════════════════════
 // LLM CHAT — Analyze news with Ollama
