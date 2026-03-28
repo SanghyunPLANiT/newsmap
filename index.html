@@ -38,6 +38,15 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
 #btn-rf:hover { background: var(--accent); color: #fff; }
 #btn-rf:disabled { opacity: .4; cursor: default; }
 
+/* ── TEXT SIZE ── */
+#text-size { display: flex; align-items: center; gap: 2px; }
+#text-size button {
+  width: 24px; height: 24px; display: flex; align-items: center; justify-content: center;
+  border: 1px solid var(--border); background: transparent; color: var(--muted);
+  cursor: pointer; border-radius: 3px; font-size: .7rem; padding: 0;
+}
+#text-size button:hover { color: var(--paper); border-color: var(--muted); }
+
 /* ── LEFT PANEL ── */
 #list-panel { width: var(--list-w); flex-shrink: 0; display: flex; flex-direction: column; background: var(--surf); border-right: 1px solid var(--border); overflow: hidden; z-index: 10; }
 #list-hdr { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: .6rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }

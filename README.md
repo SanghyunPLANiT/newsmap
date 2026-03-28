@@ -1,160 +1,133 @@
 # GLOBAL PULSE
 
-An interactive news map that visualizes world news geographically in real time. Articles are pinned to their exact locations on a dark-themed map, with AI-powered connection lines revealing how stories relate across the globe.
+Interactive world news map. See breaking news pinned to exact locations, discover connections between stories, and analyze regional trends with AI.
 
-![License](https://img.shields.io/badge/license-GPL--3.0-blue)
+![License](https://img.shields.io/badge/license-GPL--3.0-blue) ![No Build](https://img.shields.io/badge/build-none-blue) ![Ollama](https://img.shields.io/badge/AI-Ollama-purple)
 
 ## Features
 
-- **Three-panel layout** — news list (left), interactive map (center), article reader (right)
-- **Exact geocoding** — articles pinned to city-level locations, not just country centroids
-- **AI-powered connections** — click any article to see lines connecting related stories worldwide, with shared themes shown on hover
-- **Smart zoom** — zoom in to see more local news; zoom out for global headlines. News auto-fetches based on your viewport
-- **40+ RSS feeds** — configurable via `feeds.yaml` (BBC, Al Jazeera, Reuters, Guardian, NPR, and many more)
-- **Cluster pins** — multiple stories at the same location show as a numbered dot; click to expand the list
-- **Topic detection** — articles classified into Conflict, Politics, Economy, Tech, Climate, Health, Sport
-- **Local news search** — when zoomed into a city/country, fetches region-specific news via Google News RSS
-- **Ollama AI geocoding** — uses a local LLM to determine the precise location of each news event
-- **Ollama content analysis** — extracts semantic tags (people, events, organizations) to find deep connections between articles
-- **No backend required** — runs entirely in the browser as a single `index.html` file
-
-## Screenshots
-
-| Global view | Zoomed into region | Article connections |
-|---|---|---|
-| Pins across the world map | Local news with cluster dots | AI-drawn lines between related stories |
+- **Live news map** — Articles pinned to their exact locations on a dark-themed world map
+- **Multi-scale navigation** — Zoom from global headlines down to city-level local news
+- **Smart feed selection** — Automatically picks the right news sources for your zoom level:
+  - Global → world news feeds (BBC, Guardian, Al Jazeera, Reuters...)
+  - Regional → continent-specific feeds (BBC Europe, DW Asia...)
+  - National → country-specific feeds (Korea Herald, NHK, Times of India...)
+  - City → Google News search + AI geocoding via Ollama
+- **Topic connections** — Click a story to see lines connecting related articles across the map
+- **AI analysis** — Chat with a local LLM to analyze news trends in the current region
+- **100+ RSS feeds** — Configurable via `feeds.yaml`
+- **Zero build step** — Single `index.html` file, no npm, no framework
 
 ## Quick Start
 
-### Option A: One-click (macOS)
-
-Double-click `Open NewsMap.command` — it starts a local server and opens your browser.
-
-### Option B: Manual
+### One-click install
 
 ```bash
 git clone https://github.com/SanghyunPLANiT/newsmap.git
 cd newsmap
-python3 -m http.server 8080
-# Open http://localhost:8080
+bash install.sh
 ```
 
-### Option C: Claude Code (automated setup)
+This will:
+1. Check/install [Ollama](https://ollama.com) (local AI)
+2. Download the `qwen2.5:3b` model (~2GB)
+3. Configure CORS for browser access
+4. Start all servers and open your browser
 
-If you have [Claude Code](https://claude.ai/code) installed, paste the contents of `CLAUDE.md` to set up everything automatically, including Ollama.
+### macOS double-click
 
-## Ollama Setup (optional but recommended)
+Double-click `start.command` — it starts everything and opens your browser.
 
-Ollama provides AI-powered geocoding and content analysis. Without it, the app falls back to keyword-based geocoding and simpler topic connections.
-
-### Install
-
-```bash
-# macOS
-brew install ollama
-
-# Linux
-curl -fsSL https://ollama.com/install.sh | sh
-```
-
-### Pull a model
+### Manual setup
 
 ```bash
-ollama pull qwen2.5:3b      # fast, lightweight (recommended)
-# or
-ollama pull llama3.2         # more accurate, slower
-```
+# Install Ollama (https://ollama.com)
+ollama pull qwen2.5:3b
 
-### Start with CORS enabled
-
-The app runs in a browser and needs to reach Ollama's local API. Set the CORS origin:
-
-```bash
-# Add to ~/.zshrc or ~/.bashrc for persistence
+# Set CORS (required for browser access)
 export OLLAMA_ORIGINS="*"
+ollama serve &
 
-# Start Ollama
-ollama serve
+# Start the app
+python3 proxy.py 8081 &
+python3 -m http.server 8080 &
+open http://localhost:8080
 ```
 
-On macOS, also run this once so it persists across reboots:
-```bash
-launchctl setenv OLLAMA_ORIGINS "*"
+### Claude Code (automated)
+
+If you have [Claude Code](https://claude.ai/code), paste the contents of `CLAUDE.md` — it sets up everything automatically.
+
+## How It Works
+
+```
+┌─────────────┐     ┌──────────────┐     ┌─────────────┐
+│  RSS Feeds   │────▶│  CORS Proxy  │────▶│   Browser   │
+│ (100+ feeds) │     │ corsproxy.io │     │  index.html │
+└─────────────┘     └──────────────┘     └──────┬──────┘
+                                                │
+┌─────────────┐     ┌──────────────┐            │
+│ Google News  │────▶│ Local Proxy  │────────────┘
+│  (per city)  │     │  proxy.py    │
+└─────────────┘     └──────────────┘
+                                          ┌──────┴──────┐
+┌─────────────┐                           │   Ollama    │
+│  Nominatim  │◀──────────────────────────│  (local AI) │
+│  (OSM geo)  │   reverse geocode         │ qwen2.5:3b  │
+└─────────────┘                           └─────────────┘
 ```
 
-### Verify
+| Zoom | Scope | News Source | Example |
+|------|-------|-------------|---------|
+| < 4 | Global | Editorial RSS feeds | BBC World, Guardian, Reuters |
+| 4-7 | Region | Regional RSS feeds | BBC Europe, DW Asia |
+| 7-9 | Country | National RSS feeds | Korea Herald, NHK, Times of India |
+| 10+ | City | Google News + Ollama geocoding | "Sapporo news", "Seoul news" |
 
-```bash
-curl -s http://localhost:11434/api/tags
-```
+## Configuration
 
-You should see your installed models listed.
+### feeds.yaml
 
-## Customizing Feeds
-
-Edit `feeds.yaml` to add, remove, or reorganize RSS feeds:
+Add or remove RSS feeds organized by scope:
 
 ```yaml
 global:
   - label: BBC World
     url: https://feeds.bbci.co.uk/news/world/rss.xml
-  - label: My Custom Feed
-    url: https://example.com/rss.xml
 
-tech:
-  - label: Ars Technica
-    url: https://feeds.arstechnica.com/arstechnica/index
+national/Japan:
+  - label: NHK World
+    url: https://www3.nhk.or.jp/rss/news/cat0.xml
 
-# Add your own categories
-gaming:
-  - label: IGN
-    url: https://feeds.ign.com/ign/all
+national/South Korea:
+  - label: Korea Herald
+    url: https://www.koreaherald.com/common/rss_xml.php?ct=102
 ```
 
-The app loads the `global` category on startup. Other categories are loaded as you zoom into relevant regions or refresh.
-
-## How It Works
-
-1. **RSS feeds** are fetched via a CORS proxy (`corsproxy.io`) and parsed with `DOMParser`
-2. **Keyword geocoding** checks article text against 170+ cities and 73 countries for instant location matching
-3. **Ollama geocoding** (if available) sends headlines to a local LLM for precise city-level coordinates
-4. **Topic detection** classifies articles using keyword matching across 7 categories
-5. **Content analysis** (Ollama) extracts semantic tags (people, events, themes) when you click an article
-6. **Connection lines** are drawn to other articles whose text contains those same tags
-7. **Viewport-aware fetching** — as you zoom, the app fetches more local news and sorts in-view articles first
+Categories: `global`, `topic`, `region/<name>`, `national/<country>`
 
 ## Architecture
 
 ```
 newsmap/
-  index.html           # Entire app (single file, ~1300 lines)
-  feeds.yaml           # User-configurable RSS feed list
-  CLAUDE.md            # Claude Code automation prompt
-  prompt.md            # Legacy setup instructions
-  Open NewsMap.command  # macOS double-click launcher
-  start.command         # Alternative launcher
-  LICENSE              # GPL-3.0
+  index.html       # Entire app (single file)
+  feeds.yaml       # Hierarchical RSS feed config
+  proxy.py         # Local CORS proxy for Google News
+  install.sh       # One-click installer
+  start.command    # macOS launcher (double-click)
+  CLAUDE.md        # Claude Code automation prompt
+  LICENSE          # GPL-3.0
 ```
-
-### Key Dependencies (loaded via CDN)
-
-- [Leaflet.js](https://leafletjs.com/) — interactive map with CartoDB Dark Matter tiles
-- [corsproxy.io](https://corsproxy.io/) — CORS proxy for fetching RSS feeds from the browser
-
-### Local Dependencies (optional)
-
-- [Ollama](https://ollama.com/) — local LLM for geocoding and content analysis
 
 ## Troubleshooting
 
 | Problem | Solution |
 |---------|----------|
-| No news loads | Check internet connection; browser console for CORS errors |
-| All pins at country centers | Ollama is offline — install it for city-level precision |
-| "Loading..." stuck | CORS proxy may be rate-limited; wait 30s and click Refresh |
-| Cluster popup hidden behind panel | Fixed — highlight markers are now non-interactive |
-| Ollama CORS error | Run `OLLAMA_ORIGINS="*" ollama serve` |
-| `ollama: command not found` | Install: `brew install ollama` (macOS) or see [ollama.com](https://ollama.com/) |
+| Ollama shows "offline" | `OLLAMA_ORIGINS="*" ollama serve` |
+| No news loads | Must use `http://localhost:8080`, not `file://` |
+| Google News returns nothing | Make sure `proxy.py` runs on port 8081 |
+| Rate limiting (429/503) | Wait 30s and click Refresh |
+| `ollama: command not found` | `brew install ollama` (macOS) or [ollama.com](https://ollama.com) |
 
 ## License
 
