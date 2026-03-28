@@ -68,6 +68,47 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
 .ntip.leaflet-tooltip::before { display: none; }
 
 /* ── RIGHT PANEL ── */
+/* ── LLM CHAT ── */
+#llm-panel {
+  flex: 0 0 auto; max-height: 260px; display: flex; flex-direction: column;
+  border-top: 1px solid var(--border); background: var(--surf2);
+}
+#llm-toggle {
+  display: flex; align-items: center; justify-content: space-between;
+  padding: 6px 14px; cursor: pointer; font-size: .6rem; text-transform: uppercase;
+  letter-spacing: .1em; color: var(--muted); user-select: none;
+}
+#llm-toggle:hover { color: var(--paper); }
+#llm-toggle .arrow { transition: transform .2s; }
+#llm-panel.collapsed #llm-chat { display: none; }
+#llm-panel.collapsed .arrow { transform: rotate(-90deg); }
+#llm-chat { flex: 1; display: flex; flex-direction: column; overflow: hidden; min-height: 0; }
+#llm-messages {
+  flex: 1; overflow-y: auto; padding: 8px 14px; font-size: .72rem; line-height: 1.5;
+  scrollbar-width: thin; scrollbar-color: var(--border) transparent;
+}
+#llm-messages::-webkit-scrollbar { width: 3px; }
+#llm-messages::-webkit-scrollbar-thumb { background: var(--border); }
+.llm-msg { margin-bottom: 8px; }
+.llm-msg.user { color: var(--accent); }
+.llm-msg.ai { color: var(--paper); }
+.llm-msg.ai .thinking { color: var(--muted); font-style: italic; }
+#llm-input-wrap {
+  display: flex; gap: 6px; padding: 6px 10px; border-top: 1px solid var(--border);
+}
+#llm-input {
+  flex: 1; font-size: .72rem; padding: 5px 8px; background: var(--surf);
+  border: 1px solid var(--border); border-radius: 3px; color: var(--paper); outline: none;
+}
+#llm-input::placeholder { color: var(--muted); }
+#llm-input:focus { border-color: var(--muted); }
+#llm-send {
+  font-size: .65rem; padding: 4px 10px; border: 1px solid var(--accent); background: transparent;
+  color: var(--accent); cursor: pointer; border-radius: 3px; white-space: nowrap;
+}
+#llm-send:hover { background: var(--accent); color: #fff; }
+#llm-send:disabled { opacity: .4; cursor: default; }
+
 #art-panel {
   position: absolute; right: 0; top: 0; bottom: 0; width: var(--art-w); z-index: 500;
   display: flex; flex-direction: column;
@@ -135,6 +176,16 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
     <aside id="list-panel">
       <div id="list-hdr"><span>News Feed</span><span id="list-cnt">—</span></div>
       <div id="list-body"></div>
+      <div id="llm-panel" class="collapsed">
+        <div id="llm-toggle"><span>AI Analysis</span><span class="arrow">▼</span></div>
+        <div id="llm-chat">
+          <div id="llm-messages"><div class="llm-msg ai">Ask me about the news in this region. I can summarize trends, find connections, or analyze topics.</div></div>
+          <div id="llm-input-wrap">
+            <input id="llm-input" type="text" placeholder="Ask about the news…" autocomplete="off" />
+            <button id="llm-send">Send</button>
+          </div>
+        </div>
+      </div>
     </aside>
     <div id="map-wrap">
       <div id="map"></div>
@@ -727,7 +778,7 @@ function maxDistForZoom(zoom) {
 async function fetchLocalNews(queryLabel, vp) {
   // Build search queries: city-level queries when zoomed in, country-level otherwise
   const queries = [];
-  const existing = new Set(articles.map(a => a.title.slice(0, 60).toLowerCase()));
+  const existing = new Set(articles.map(a => dedupKey(a.title)));
 
   // At city zoom level, search by city names first
   if (vp?.cities?.length > 0 && vp.scope?.level === 'city') {
@@ -754,7 +805,7 @@ async function fetchLocalNews(queryLabel, vp) {
       const xml = await localProxyFetch(rssUrl);
       const items = parseRSS(xml, label);
       for (const a of items) {
-        const key = a.title.slice(0, 60).toLowerCase();
+        const key = dedupKey(a.title);
         if (!existing.has(key)) {
           existing.add(key);
           a._queryCountry = label;
@@ -1491,15 +1542,23 @@ async function autoFetchForViewport() {
 // ══════════════════════════════════════════════
 // LOAD ALL FEEDS  (global view / refresh)
 // ══════════════════════════════════════════════
+// Normalize title for dedup: strip publisher suffix, lowercase, trim
+function dedupKey(title) {
+  return title
+    .replace(/\s*[-–—|]\s*(Reuters|AP|BBC|AFP|Al Jazeera|NPR|DW|France 24|Sky News|The Guardian|Washington Post|NY Times|Euronews|CBC|NHK|Japan Times|Korea Herald|Korea Times|Yonhap|SCMP|Times of India|The Hindu|ABC|The Independent|Yahoo|Fox News|CNN|MSNBC|NBC|CBS|PBS|USA Today|Associated Press|United Press|Bloomberg|CNBC|Financial Times).*$/i, '')
+    .replace(/\s*[-–—|]\s*[A-Z][A-Za-z\s.]{2,30}$/, '')  // generic "- Publisher Name"
+    .toLowerCase().trim().slice(0, 60);
+}
+
 function finishLoad(groups, label, accumulate) {
   const incoming = groups.flat();
-  // Build set of existing titles for dedup
+  // Build set of existing titles for dedup (normalized)
   const seen = new Set();
   if (accumulate) {
-    for (const a of articles) seen.add(a.title.slice(0,60).toLowerCase());
+    for (const a of articles) seen.add(dedupKey(a.title));
   }
   const fresh = incoming.filter(a => {
-    const k = a.title.slice(0,60).toLowerCase();
+    const k = dedupKey(a.title);
     if (seen.has(k)) return false;
     seen.add(k); return true;
   });
@@ -1509,6 +1568,14 @@ function finishLoad(groups, label, accumulate) {
   } else {
     articles = fresh;
   }
+
+  // Global dedup pass: remove remaining duplicates
+  const finalSeen = new Set();
+  articles = articles.filter(a => {
+    const k = dedupKey(a.title);
+    if (finalSeen.has(k)) return false;
+    finalSeen.add(k); return true;
+  });
   // Sort: in-viewport first, then local, then by date
   sortArticlesByViewport();
 
@@ -1528,6 +1595,132 @@ function finishLoad(groups, label, accumulate) {
 document.getElementById('btn-rf').addEventListener('click', async () => {
   if (isFetching) return;
   loadByViewport(true);
+});
+
+// ══════════════════════════════════════════════
+// LLM CHAT — Analyze news with Ollama
+// ══════════════════════════════════════════════
+document.getElementById('llm-toggle').addEventListener('click', () => {
+  document.getElementById('llm-panel').classList.toggle('collapsed');
+});
+
+async function llmChat(userMsg) {
+  if (!ollamaModel) {
+    appendLlmMsg('ai', 'Ollama is not running. Start it with: OLLAMA_ORIGINS="*" ollama serve');
+    return;
+  }
+
+  appendLlmMsg('user', userMsg);
+  const thinkId = appendLlmMsg('ai', '<span class="thinking">Thinking…</span>');
+
+  // Build context: only articles relevant to current viewport
+  const bounds = map.getBounds();
+  const center = map.getCenter();
+  const zoom = map.getZoom();
+  const maxDist = maxDistForZoom(zoom);
+
+  // Score articles by relevance to current view
+  const scored = articles
+    .filter(a => a.place)
+    .map(a => {
+      const inBounds = bounds.contains([a.place.lat, a.place.lng]);
+      const dist = distKm(center.lat, center.lng, a.place.lat, a.place.lng);
+      const score = (inBounds ? 1000 : 0) + (a.isLocal ? 500 : 0) + Math.max(0, maxDist - dist);
+      return { a, score, dist };
+    })
+    .filter(s => s.dist < maxDist * 2) // only articles within 2x the zoom radius
+    .sort((a, b) => b.score - a.score);
+
+  const contextArticles = scored.slice(0, 30).map(s => s.a);
+  if (contextArticles.length === 0) {
+    updateLlmMsg(thinkId, 'No news articles found in the current map view. Try zooming out or refreshing.');
+    return;
+  }
+
+  const newsContext = contextArticles.map((a, i) =>
+    `${i+1}. [${a.place?.n || 'Unknown'}] ${a.title}${a.topic ? ' (' + a.topic.name + ')' : ''}`
+  ).join('\n');
+
+  const vp = await getViewportInfo();
+  const regionLabel = vp.label || 'this region';
+
+  const prompt = `You are a news analyst. The user is viewing a map of: ${regionLabel} (zoom level ${zoom}).
+There are ${contextArticles.length} news articles in this area.
+
+Headlines:
+${newsContext}
+
+User question: ${userMsg}
+
+Focus ONLY on news relevant to ${regionLabel}. Be concise and insightful. Identify regional themes, key events, and connections between stories. Keep it under 200 words.`;
+
+  try {
+    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      body: JSON.stringify({
+        model: ollamaModel, prompt, stream: true,
+        options: { temperature: 0.3, num_predict: 500 }
+      }),
+    });
+
+    const reader = res.body.getReader();
+    const decoder = new TextDecoder();
+    let fullText = '';
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      const chunk = decoder.decode(value, { stream: true });
+      for (const line of chunk.split('\n')) {
+        if (!line.trim()) continue;
+        try {
+          const j = JSON.parse(line);
+          if (j.response) {
+            fullText += j.response;
+            updateLlmMsg(thinkId, fullText);
+          }
+        } catch(e) {}
+      }
+    }
+    if (!fullText) updateLlmMsg(thinkId, 'No response from Ollama.');
+  } catch(e) {
+    updateLlmMsg(thinkId, `Error: ${e.message}`);
+  }
+}
+
+function appendLlmMsg(role, html) {
+  const msgs = document.getElementById('llm-messages');
+  const div = document.createElement('div');
+  div.className = 'llm-msg ' + role;
+  div.innerHTML = html;
+  const id = 'llm-' + Date.now();
+  div.id = id;
+  msgs.appendChild(div);
+  msgs.scrollTop = msgs.scrollHeight;
+  return id;
+}
+
+function updateLlmMsg(id, text) {
+  const el = document.getElementById(id);
+  if (el) {
+    el.innerHTML = text.replace(/\n/g, '<br>');
+    el.parentElement.scrollTop = el.parentElement.scrollHeight;
+  }
+}
+
+document.getElementById('llm-send').addEventListener('click', () => {
+  const input = document.getElementById('llm-input');
+  const msg = input.value.trim();
+  if (!msg) return;
+  input.value = '';
+  llmChat(msg);
+});
+
+document.getElementById('llm-input').addEventListener('keydown', (e) => {
+  if (e.key === 'Enter' && !e.shiftKey) {
+    e.preventDefault();
+    document.getElementById('llm-send').click();
+  }
 });
 
 // Initial load — load feeds config, check Ollama, then fetch news
