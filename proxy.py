@@ -7,16 +7,15 @@ import sys
 
 class ProxyHandler(http.server.BaseHTTPRequestHandler):
     def do_GET(self):
-        # Extract the target URL from query string: /proxy?url=...
         from urllib.parse import urlparse, parse_qs
-        qs = parse_qs(urlparse(self.path).query)
-        url = qs.get('url', [None])[0]
-        if not url:
-            self.send_response(400)
-            self.end_headers()
-            self.wfile.write(b'Missing url parameter')
-            return
         try:
+            qs = parse_qs(urlparse(self.path).query)
+            url = qs.get('url', [None])[0]
+            if not url:
+                self.send_response(400)
+                self.end_headers()
+                self.wfile.write(b'Missing url parameter')
+                return
             req = urllib.request.Request(url, headers={
                 'User-Agent': 'Mozilla/5.0 (compatible; GlobalPulse/1.0)',
                 'Accept': 'application/rss+xml, application/xml, text/xml, */*',
@@ -29,22 +28,33 @@ class ProxyHandler(http.server.BaseHTTPRequestHandler):
                 self.end_headers()
                 self.wfile.write(data)
         except urllib.error.HTTPError as e:
-            self.send_response(e.code)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(f'Upstream error: {e.code}'.encode())
+            try:
+                self.send_response(e.code)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(f'Upstream error: {e.code}'.encode())
+            except (BrokenPipeError, ConnectionResetError):
+                pass
+        except (BrokenPipeError, ConnectionResetError):
+            pass
         except Exception as e:
-            self.send_response(502)
-            self.send_header('Access-Control-Allow-Origin', '*')
-            self.end_headers()
-            self.wfile.write(f'Proxy error: {e}'.encode())
+            try:
+                self.send_response(502)
+                self.send_header('Access-Control-Allow-Origin', '*')
+                self.end_headers()
+                self.wfile.write(f'Proxy error: {e}'.encode())
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def do_OPTIONS(self):
-        self.send_response(200)
-        self.send_header('Access-Control-Allow-Origin', '*')
-        self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
-        self.send_header('Access-Control-Allow-Headers', '*')
-        self.end_headers()
+        try:
+            self.send_response(200)
+            self.send_header('Access-Control-Allow-Origin', '*')
+            self.send_header('Access-Control-Allow-Methods', 'GET, OPTIONS')
+            self.send_header('Access-Control-Allow-Headers', '*')
+            self.end_headers()
+        except (BrokenPipeError, ConnectionResetError):
+            pass
 
     def log_message(self, fmt, *args):
         pass  # suppress logs
