@@ -102,7 +102,18 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
   background-repeat: no-repeat; background-position: right 5px center; padding-right: 16px;
 }
 #map-style:hover { color: var(--paper); border-color: var(--muted); }
-#map-style option { background: var(--bg); color: var(--paper); }
+#map-style option { background: var(--surf); color: var(--paper); }
+
+/* ── UI THEME SELECTOR ── */
+#ui-theme {
+  height: 24px; padding: 0 6px; border: 1px solid var(--border); background: transparent;
+  color: var(--muted); font-size: .65rem; border-radius: 3px; cursor: pointer;
+  appearance: none; -webkit-appearance: none;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='8' height='5'%3E%3Cpath d='M0 0l4 5 4-5z' fill='%23777'/%3E%3C/svg%3E");
+  background-repeat: no-repeat; background-position: right 5px center; padding-right: 16px;
+}
+#ui-theme:hover { color: var(--paper); border-color: var(--muted); }
+#ui-theme option { background: var(--surf); color: var(--paper); }
 
 /* ── LEFT PANEL ── */
 #list-panel { width: var(--list-w); flex-shrink: 0; display: flex; flex-direction: column; background: var(--surf); border-right: 1px solid var(--border); overflow: hidden; z-index: 10; }
@@ -236,6 +247,13 @@ html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(
     <div id="logo">GLOBAL<span>PULSE</span></div>
     <div id="hdr-status">Loading…</div>
     <input id="search" type="text" placeholder="Search stories…" autocomplete="off" spellcheck="false" />
+    <select id="ui-theme">
+      <option value="dark">Dark</option>
+      <option value="light">Light</option>
+      <option value="sepia">Sepia</option>
+      <option value="midnight">Midnight</option>
+      <option value="solarized">Solarized</option>
+    </select>
     <select id="map-style">
       <option value="dark">Dark</option>
       <option value="light">Light</option>
@@ -1040,7 +1058,7 @@ function renderAllPins() {
       tip += '<div class="tip-body">';
       tip += `<div class="tip-title" style="margin-bottom:4px"><strong>${first.place.n}</strong> · ${n} stories</div>`;
       for (const a of group.slice(0, 4)) {
-        tip += `<div style="font-size:.62rem;color:#c5c0b8;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">• ${a.title}</div>`;
+        tip += `<div style="font-size:.62rem;color:var(--art-text);margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">• ${a.title}</div>`;
       }
       if (n > 4) tip += `<div style="font-size:.55rem;color:var(--muted)">+${n - 4} more…</div>`;
       tip += '</div>';
@@ -1070,15 +1088,15 @@ function showClusterPopup(group, lat, lng) {
   const items = group.map(a => {
     const topicTag = a.topic ? `<span style="font-size:.5rem;color:${a.topic.color};text-transform:uppercase;letter-spacing:.04em;margin-left:4px">${a.topic.name}</span>` : '';
     return `<div class="cluster-item" data-aid="${a.id}">
-      <div style="font-size:.55rem;text-transform:uppercase;letter-spacing:.06em;color:#7a7468;margin-bottom:2px">${a.source}${topicTag}</div>
-      <div style="font-size:.76rem;line-height:1.35;color:#f0ebe0">${a.title}</div>
-      <div style="font-size:.55rem;color:#7a7468;margin-top:2px">${timeAgo(a.date)}</div>
+      <div style="font-size:.55rem;text-transform:uppercase;letter-spacing:.06em;color:var(--muted);margin-bottom:2px">${a.source}${topicTag}</div>
+      <div style="font-size:.76rem;line-height:1.35;color:var(--paper)">${a.title}</div>
+      <div style="font-size:.55rem;color:var(--muted);margin-top:2px">${timeAgo(a.date)}</div>
     </div>`;
   }).join('');
 
-  const html = `<div style="padding:8px 12px 4px;border-bottom:1px solid #2e2c29">
-    <div style="font-size:.85rem;font-weight:700;color:#f0ebe0">${locName}</div>
-    <div style="font-size:.6rem;color:#7a7468;margin-bottom:4px">${group.length} stories</div>
+  const html = `<div style="padding:8px 12px 4px;border-bottom:1px solid var(--border)">
+    <div style="font-size:.85rem;font-weight:700;color:var(--paper)">${locName}</div>
+    <div style="font-size:.6rem;color:var(--muted);margin-bottom:4px">${group.length} stories</div>
   </div>${items}`;
 
   clusterPopup = L.popup({ className: 'cluster-popup', maxWidth: 280, minWidth: 240, closeButton: true, autoPan: true })
@@ -1142,7 +1160,7 @@ async function showConnectionsFor(article) {
         [[article.place.lat, article.place.lng], [r.place.lat, r.place.lng]],
         { color, weight, opacity, dashArray: '6 4' }
       );
-      line.bindTooltip(`<div class="tip-body"><div class="tip-title" style="font-size:.65rem">${label}</div><div style="font-size:.55rem;color:#7a7468;margin-top:2px">${r.title.slice(0,60)}…</div></div>`,
+      line.bindTooltip(`<div class="tip-body"><div class="tip-title" style="font-size:.65rem">${label}</div><div style="font-size:.55rem;color:var(--muted);margin-top:2px">${r.title.slice(0,60)}…</div></div>`,
         { sticky: true, className: 'ntip', direction: 'top' });
       linesLayer.addLayer(line);
     }
@@ -1686,6 +1704,19 @@ document.getElementById('btn-rf').addEventListener('click', async () => {
   if (isFetching) return;
   loadByViewport(true);
 });
+
+// ══════════════════════════════════════════════
+// UI THEME
+// ══════════════════════════════════════════════
+{
+  const saved = localStorage.getItem('ui-theme') || 'dark';
+  document.documentElement.setAttribute('data-theme', saved);
+  document.getElementById('ui-theme').value = saved;
+  document.getElementById('ui-theme').addEventListener('change', (e) => {
+    document.documentElement.setAttribute('data-theme', e.target.value);
+    localStorage.setItem('ui-theme', e.target.value);
+  });
+}
 
 // ══════════════════════════════════════════════
 // TEXT SIZE
