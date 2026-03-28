@@ -1,0 +1,1339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>GLOBAL PULSE</title>
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<style>
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+:root {
+  --ink:    #0f0e0c;
+  --paper:  #f0ebe0;
+  --accent: #c8392b;
+  --muted:  #7a7468;
+  --surf:   #1a1917;
+  --surf2:  #242220;
+  --border: #2e2c29;
+  --list-w: 320px;
+  --art-w:  420px;
+}
+html, body { height: 100%; overflow: hidden; background: var(--ink); color: var(--paper); font-family: system-ui, -apple-system, sans-serif; font-size: 14px; }
+#app  { display: flex; flex-direction: column; height: 100vh; }
+#main { flex: 1; display: flex; overflow: hidden; min-height: 0; position: relative; }
+
+/* ── HEADER ── */
+#hdr {
+  flex: 0 0 48px; display: flex; align-items: center; gap: 10px;
+  padding: 0 14px; background: var(--surf); border-bottom: 1px solid var(--border);
+}
+#logo { font-size: 1rem; font-weight: 700; letter-spacing: .08em; white-space: nowrap; }
+#logo span { color: var(--accent); }
+#hdr-status { font-size: .68rem; color: var(--muted); flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+#search { font-size: .78rem; width: 170px; padding: 5px 10px; background: var(--surf2); border: 1px solid var(--border); border-radius: 3px; color: var(--paper); outline: none; }
+#search::placeholder { color: var(--muted); }
+#search:focus { border-color: var(--muted); }
+#btn-rf { font-size: .7rem; padding: 4px 11px; border: 1px solid var(--accent); background: transparent; color: var(--accent); cursor: pointer; border-radius: 3px; letter-spacing: .05em; white-space: nowrap; }
+#btn-rf:hover { background: var(--accent); color: #fff; }
+#btn-rf:disabled { opacity: .4; cursor: default; }
+
+/* ── LEFT PANEL ── */
+#list-panel { width: var(--list-w); flex-shrink: 0; display: flex; flex-direction: column; background: var(--surf); border-right: 1px solid var(--border); overflow: hidden; z-index: 10; }
+#list-hdr { padding: 8px 14px; border-bottom: 1px solid var(--border); font-size: .6rem; text-transform: uppercase; letter-spacing: .1em; color: var(--muted); display: flex; justify-content: space-between; align-items: center; flex-shrink: 0; }
+#list-body { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+#list-body::-webkit-scrollbar { width: 3px; }
+#list-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+.empty { padding: 24px 14px; font-size: .72rem; color: var(--muted); text-align: center; line-height: 1.6; }
+.loading-row { display: flex; align-items: center; gap: 8px; padding: 13px 14px; border-bottom: 1px solid var(--border); }
+.skel { background: var(--border); border-radius: 2px; animation: shimmer 1.4s ease-in-out infinite; }
+@keyframes shimmer { 0%,100%{opacity:.4} 50%{opacity:.9} }
+
+.ni { padding: 11px 14px; border-bottom: 1px solid var(--border); cursor: pointer; position: relative; }
+.ni:hover { background: var(--surf2); }
+.ni.active { background: var(--surf2); }
+.ni.active::before { content:''; position:absolute; left:0; top:0; bottom:0; width:2px; background:var(--accent); }
+.ni-src   { font-size: .58rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); margin-bottom: 3px; }
+.ni-local { display: inline-block; font-size: .5rem; background: var(--accent); color: #fff; padding: 1px 5px; border-radius: 2px; margin-left: 5px; letter-spacing: .04em; vertical-align: middle; }
+.ni-title { font-size: .82rem; line-height: 1.4; color: var(--paper); margin-bottom: 5px; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.ni-meta  { font-size: .62rem; color: var(--muted); display: flex; gap: 8px; align-items: center; }
+.dot { width: 6px; height: 6px; border-radius: 50%; flex-shrink: 0; display: inline-block; }
+
+/* ── MAP ── */
+#map-wrap { flex: 1; position: relative; min-width: 0; }
+#map { width: 100%; height: 100%; }
+.leaflet-container { background: #0f0e0c !important; }
+.ntip.leaflet-tooltip { background: var(--surf); border: 1px solid var(--border); border-radius: 3px; color: var(--paper); font-size: .75rem; padding: 5px 9px; box-shadow: 0 4px 12px rgba(0,0,0,.5); }
+.ntip.leaflet-tooltip::before { display: none; }
+
+/* ── RIGHT PANEL ── */
+#art-panel {
+  position: absolute; right: 0; top: 0; bottom: 0; width: var(--art-w); z-index: 500;
+  display: flex; flex-direction: column;
+  background: var(--surf); border-left: 1px solid var(--border);
+  transform: translateX(100%); transition: transform .3s cubic-bezier(.4,0,.2,1);
+}
+#art-panel.open { transform: translateX(0); }
+#art-close { position: absolute; top: 10px; right: 10px; width: 26px; height: 26px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border); background: var(--surf2); color: var(--muted); cursor: pointer; border-radius: 3px; font-size: .85rem; z-index: 10; }
+#art-close:hover { color: var(--paper); border-color: var(--muted); }
+#art-body { flex: 1; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; }
+#art-body::-webkit-scrollbar { width: 3px; }
+#art-body::-webkit-scrollbar-thumb { background: var(--border); }
+
+.art-src   { padding: 16px 18px 0; font-size: .6rem; text-transform: uppercase; letter-spacing: .07em; color: var(--muted); }
+.art-title { padding: 8px 18px 0; font-size: 1.15rem; font-weight: 700; line-height: 1.35; color: var(--paper); }
+.art-meta  { padding: 7px 18px 0; font-size: .65rem; color: var(--muted); }
+.art-loc   { display: inline-flex; align-items: center; gap: 5px; margin: 8px 18px 0; font-size: .7rem; color: var(--muted); background: var(--surf2); padding: 4px 9px; border-radius: 12px; }
+.art-img   { margin: 12px 18px 0; border-radius: 4px; overflow: hidden; max-height: 200px; }
+.art-img img { width: 100%; height: 200px; object-fit: cover; }
+.art-text  { padding: 14px 18px; font-size: .88rem; line-height: 1.75; color: #c5c0b8; }
+.art-text p { margin-bottom: 12px; }
+.art-link  { display: inline-flex; align-items: center; gap: 6px; margin: 4px 18px 28px; padding: 8px 16px; border: 1px solid var(--accent); color: var(--accent); text-decoration: none; border-radius: 3px; font-size: .72rem; letter-spacing: .05em; }
+.art-link:hover { background: var(--accent); color: #fff; }
+
+/* pin pulse */
+@keyframes pulse { 0%{transform:scale(1);opacity:.7} 60%{transform:scale(2.2);opacity:0} 100%{transform:scale(2.2);opacity:0} }
+.pring { animation: pulse 1.8s ease-out infinite; transform-origin:50% 50%; }
+
+/* rich tooltip */
+.ntip.leaflet-tooltip { max-width: 230px; padding: 0; overflow: hidden; }
+.tip-img { width: 100%; height: 80px; object-fit: cover; display: block; }
+.tip-body { padding: 6px 9px 7px; }
+.tip-title { font-size: .72rem; line-height: 1.3; font-weight: 600; color: var(--paper); }
+.tip-topic { font-size: .56rem; margin-top: 3px; text-transform: uppercase; letter-spacing: .06em; }
+
+/* cluster popup */
+.cluster-popup { z-index: 1000 !important; }
+.cluster-popup .leaflet-popup-content-wrapper { background: var(--surf); border: 1px solid var(--border); border-radius: 4px; color: var(--paper); box-shadow: 0 4px 16px rgba(0,0,0,.5); }
+.cluster-popup .leaflet-popup-content { margin: 0; padding: 0; max-height: 320px; overflow-y: auto; scrollbar-width: thin; scrollbar-color: var(--border) transparent; width: 260px !important; }
+.cluster-popup .leaflet-popup-tip { background: var(--surf); border: 1px solid var(--border); }
+.cluster-popup .leaflet-popup-close-button { color: var(--muted); font-size: 18px; padding: 4px 8px; }
+.cluster-popup .leaflet-popup-close-button:hover { color: var(--paper); }
+.cluster-item { padding: 8px 12px; border-bottom: 1px solid var(--border); cursor: pointer; }
+.cluster-item:hover { background: var(--surf2); }
+.cluster-item:last-child { border-bottom: none; }
+
+/* topic legend */
+#legend { position: absolute; bottom: 30px; left: 10px; z-index: 450; background: var(--surf); border: 1px solid var(--border); border-radius: 4px; padding: 7px 10px; font-size: .58rem; line-height: 2; pointer-events: none; }
+.leg-row { display: flex; align-items: center; gap: 5px; }
+.leg-line { width: 18px; height: 0; border-top: 2px dashed; }
+
+/* connection line hover */
+.leaflet-interactive:hover { cursor: pointer; }
+</style>
+</head>
+<body>
+<div id="app">
+  <header id="hdr">
+    <div id="logo">GLOBAL<span>PULSE</span></div>
+    <div id="hdr-status">Loading…</div>
+    <input id="search" type="text" placeholder="Search stories…" autocomplete="off" spellcheck="false" />
+    <button id="btn-rf">↻ Refresh</button>
+  </header>
+  <div id="main">
+    <aside id="list-panel">
+      <div id="list-hdr"><span>News Feed</span><span id="list-cnt">—</span></div>
+      <div id="list-body"></div>
+    </aside>
+    <div id="map-wrap">
+      <div id="map"></div>
+      <div id="legend"></div>
+    </div>
+    <aside id="art-panel">
+      <button id="art-close">✕</button>
+      <div id="art-body"><div class="empty" style="margin-top:50px">Select a story.</div></div>
+    </aside>
+  </div>
+</div>
+<script>
+'use strict';
+
+// ══════════════════════════════════════════════
+// LOCATIONS  keyword → country centroid
+// ══════════════════════════════════════════════
+const PLACES = [
+  {n:'United States',  lat:38.9,  lng:-77.0, c:'#4a90d9', k:['United States','Washington DC','Pentagon','White House','Congress','Senate','FBI','CIA','NASA','Wall Street','New York','Los Angeles','Chicago','Silicon Valley',' U.S.','U.S.A','the US ']},
+  {n:'United Kingdom', lat:51.5,  lng:-0.1,  c:'#5b8dd9', k:['United Kingdom','Britain','British','London','England','Scotland','Wales','Westminster','Downing Street','NHS','FTSE']},
+  {n:'France',         lat:48.8,  lng:2.35,  c:'#3d5a80', k:['France','French','Paris','Macron','Marseille','Lyon','Élysée']},
+  {n:'Germany',        lat:52.5,  lng:13.4,  c:'#8a8a8a', k:['Germany','German','Berlin','Bundestag','Munich','Frankfurt','Hamburg','Scholz']},
+  {n:'Russia',         lat:55.75, lng:37.6,  c:'#c0392b', k:['Russia','Russian','Moscow','Kremlin','Putin','Siberia','St Petersburg','Red Army']},
+  {n:'Ukraine',        lat:50.4,  lng:30.5,  c:'#e8b84b', k:['Ukraine','Ukrainian','Kyiv','Kiev','Zelensky','Zelenskyy','Donbas','Kharkiv','Odessa','Zaporizhzhia','Dnipro']},
+  {n:'China',          lat:39.9,  lng:116.4, c:'#e74c3c', k:['China','Chinese','Beijing','Shanghai','Xi Jinping','Hong Kong','Xinjiang','Taiwan Strait','PLA','CCP']},
+  {n:'Taiwan',         lat:25.0,  lng:121.5, c:'#2ecc71', k:['Taiwan','Taiwanese','Taipei','TSMC']},
+  {n:'Japan',          lat:35.7,  lng:139.7, c:'#e74c3c', k:['Japan','Japanese','Tokyo','Osaka','Hiroshima','Nagasaki','Bank of Japan','yen']},
+  {n:'South Korea',    lat:37.6,  lng:127.0, c:'#1abc9c', k:['South Korea','South Korean','Seoul','Samsung','Hyundai','K-pop']},
+  {n:'North Korea',    lat:39.0,  lng:125.8, c:'#8e44ad', k:['North Korea','Kim Jong','Pyongyang','DPRK']},
+  {n:'India',          lat:28.6,  lng:77.2,  c:'#e67e22', k:['India','Indian','New Delhi','Mumbai','Modi','Kolkata','Chennai','BJP']},
+  {n:'Pakistan',       lat:33.7,  lng:73.0,  c:'#27ae60', k:['Pakistan','Pakistani','Islamabad','Karachi','Lahore','Imran Khan']},
+  {n:'Afghanistan',    lat:34.5,  lng:69.2,  c:'#95a5a6', k:['Afghanistan','Afghan','Kabul','Taliban']},
+  {n:'Iran',           lat:35.7,  lng:51.4,  c:'#27ae60', k:['Iran','Iranian','Tehran','Khamenei','IRGC','Hormuz']},
+  {n:'Iraq',           lat:33.3,  lng:44.4,  c:'#d4ac0d', k:['Iraq','Iraqi','Baghdad','Kurdistan','Mosul','Basra']},
+  {n:'Syria',          lat:33.5,  lng:36.3,  c:'#bdc3c7', k:['Syria','Syrian','Damascus','Aleppo','Assad']},
+  {n:'Israel',         lat:31.8,  lng:35.2,  c:'#3498db', k:['Israel','Israeli','Jerusalem','Tel Aviv','IDF','Netanyahu','Mossad','West Bank']},
+  {n:'Gaza',           lat:31.4,  lng:34.4,  c:'#e74c3c', k:['Gaza','Hamas','Rafah','Khan Younis','Palestinian','Gaza Strip']},
+  {n:'Lebanon',        lat:33.9,  lng:35.5,  c:'#27ae60', k:['Lebanon','Lebanese','Beirut','Hezbollah']},
+  {n:'Yemen',          lat:15.4,  lng:44.2,  c:'#c0392b', k:['Yemen','Yemeni','Sanaa','Houthi']},
+  {n:'Saudi Arabia',   lat:24.7,  lng:46.7,  c:'#27ae60', k:['Saudi Arabia','Saudi','Riyadh','MBS','Mohammed bin Salman','Aramco','OPEC']},
+  {n:'UAE',            lat:24.5,  lng:54.4,  c:'#3498db', k:['UAE','Emirates','Abu Dhabi','Dubai','dirham']},
+  {n:'Qatar',          lat:25.3,  lng:51.5,  c:'#8e44ad', k:['Qatar','Qatari','Doha']},
+  {n:'Turkey',         lat:39.9,  lng:32.9,  c:'#c0392b', k:['Turkey','Turkish','Ankara','Istanbul','Erdogan','Erdoğan']},
+  {n:'Egypt',          lat:30.1,  lng:31.2,  c:'#d4ac0d', k:['Egypt','Egyptian','Cairo','Suez','el-Sisi']},
+  {n:'Nigeria',        lat:9.1,   lng:7.5,   c:'#27ae60', k:['Nigeria','Nigerian','Abuja','Lagos','Boko Haram']},
+  {n:'Ethiopia',       lat:9.0,   lng:38.7,  c:'#27ae60', k:['Ethiopia','Ethiopian','Addis Ababa','Tigray','Abiy']},
+  {n:'Kenya',          lat:-1.3,  lng:36.8,  c:'#c0392b', k:['Kenya','Kenyan','Nairobi','Ruto']},
+  {n:'South Africa',   lat:-25.7, lng:28.2,  c:'#27ae60', k:['South Africa','Johannesburg','Cape Town','Pretoria','Ramaphosa','ANC']},
+  {n:'Sudan',          lat:15.6,  lng:32.5,  c:'#c0392b', k:['Sudan','Sudanese','Khartoum','RSF','Darfur']},
+  {n:'Somalia',        lat:2.0,   lng:45.3,  c:'#c0392b', k:['Somalia','Somali','Mogadishu','al-Shabaab']},
+  {n:'Libya',          lat:32.9,  lng:13.2,  c:'#bdc3c7', k:['Libya','Libyan','Tripoli','Benghazi']},
+  {n:'Morocco',        lat:34.0,  lng:-6.8,  c:'#c0392b', k:['Morocco','Moroccan','Rabat','Casablanca']},
+  {n:'DR Congo',       lat:-4.3,  lng:15.3,  c:'#c0392b', k:['Congo','DRC','Kinshasa','M23']},
+  {n:'Brazil',         lat:-15.8, lng:-47.9, c:'#27ae60', k:['Brazil','Brazilian','Brasília','São Paulo','Rio de Janeiro','Amazon rainforest','Lula','Bolsonaro']},
+  {n:'Argentina',      lat:-34.6, lng:-58.4, c:'#3498db', k:['Argentina','Argentine','Buenos Aires','Milei']},
+  {n:'Mexico',         lat:19.4,  lng:-99.1, c:'#27ae60', k:['Mexico','Mexican','Mexico City','Monterrey','cartel']},
+  {n:'Colombia',       lat:4.7,   lng:-74.1, c:'#f39c12', k:['Colombia','Colombian','Bogotá','Petro','FARC']},
+  {n:'Venezuela',      lat:10.5,  lng:-66.9, c:'#c0392b', k:['Venezuela','Venezuelan','Caracas','Maduro']},
+  {n:'Peru',           lat:-12.1, lng:-77.0, c:'#c0392b', k:['Peru','Peruvian','Lima']},
+  {n:'Chile',          lat:-33.5, lng:-70.6, c:'#c0392b', k:['Chile','Chilean','Santiago','Boric']},
+  {n:'Cuba',           lat:23.1,  lng:-82.4, c:'#c0392b', k:['Cuba','Cuban','Havana']},
+  {n:'Haiti',          lat:18.5,  lng:-72.3, c:'#c0392b', k:['Haiti','Haitian','Port-au-Prince']},
+  {n:'Canada',         lat:45.4,  lng:-75.7, c:'#c0392b', k:['Canada','Canadian','Ottawa','Toronto','Vancouver','Trudeau']},
+  {n:'Australia',      lat:-35.3, lng:149.1, c:'#27ae60', k:['Australia','Australian','Canberra','Sydney','Melbourne','Albanese']},
+  {n:'New Zealand',    lat:-41.3, lng:174.8, c:'#27ae60', k:['New Zealand','Kiwi','Wellington','Auckland']},
+  {n:'Indonesia',      lat:-6.2,  lng:106.8, c:'#c0392b', k:['Indonesia','Indonesian','Jakarta','Bali','Prabowo']},
+  {n:'Philippines',    lat:14.6,  lng:121.0, c:'#3498db', k:['Philippines','Philippine','Manila','Marcos']},
+  {n:'Thailand',       lat:13.8,  lng:100.5, c:'#c0392b', k:['Thailand','Thai','Bangkok']},
+  {n:'Vietnam',        lat:21.0,  lng:105.8, c:'#c0392b', k:['Vietnam','Vietnamese','Hanoi']},
+  {n:'Myanmar',        lat:16.8,  lng:96.2,  c:'#c0392b', k:['Myanmar','Burma','Burmese','Naypyidaw','junta']},
+  {n:'Bangladesh',     lat:23.7,  lng:90.4,  c:'#27ae60', k:['Bangladesh','Dhaka']},
+  {n:'Sri Lanka',      lat:6.9,   lng:79.9,  c:'#c0392b', k:['Sri Lanka','Colombo']},
+  {n:'Malaysia',       lat:3.1,   lng:101.7, c:'#c0392b', k:['Malaysia','Malaysian','Kuala Lumpur']},
+  {n:'Singapore',      lat:1.35,  lng:103.8, c:'#3498db', k:['Singapore']},
+  {n:'Kazakhstan',     lat:51.2,  lng:71.4,  c:'#3498db', k:['Kazakhstan','Astana','Almaty']},
+  {n:'Poland',         lat:52.2,  lng:21.0,  c:'#c0392b', k:['Poland','Polish','Warsaw','Tusk']},
+  {n:'Spain',          lat:40.4,  lng:-3.7,  c:'#c0392b', k:['Spain','Spanish','Madrid','Barcelona','Catalan']},
+  {n:'Italy',          lat:41.9,  lng:12.5,  c:'#27ae60', k:['Italy','Italian','Rome','Milan','Vatican','Meloni']},
+  {n:'Greece',         lat:37.98, lng:23.7,  c:'#3498db', k:['Greece','Greek','Athens']},
+  {n:'Sweden',         lat:59.3,  lng:18.1,  c:'#f1c40f', k:['Sweden','Swedish','Stockholm']},
+  {n:'Netherlands',    lat:52.4,  lng:4.9,   c:'#e67e22', k:['Netherlands','Dutch','Amsterdam','The Hague']},
+  {n:'Belgium',        lat:50.85, lng:4.35,  c:'#f1c40f', k:['Belgium','Belgian','Brussels']},
+  {n:'Switzerland',    lat:46.9,  lng:7.4,   c:'#c0392b', k:['Switzerland','Swiss','Geneva','Davos','Zurich']},
+  {n:'Hungary',        lat:47.5,  lng:19.1,  c:'#c0392b', k:['Hungary','Hungarian','Budapest','Orbán','Orban']},
+  {n:'Romania',        lat:44.4,  lng:26.1,  c:'#3498db', k:['Romania','Romanian','Bucharest']},
+  {n:'Serbia',         lat:44.8,  lng:20.5,  c:'#c0392b', k:['Serbia','Serbian','Belgrade','Vučić']},
+  {n:'Portugal',       lat:38.7,  lng:-9.1,  c:'#c0392b', k:['Portugal','Portuguese','Lisbon']},
+  {n:'Finland',        lat:60.2,  lng:24.9,  c:'#3498db', k:['Finland','Finnish','Helsinki']},
+  {n:'Austria',        lat:48.2,  lng:16.4,  c:'#c0392b', k:['Austria','Austrian','Vienna']},
+];
+
+// City-level keyword geocoding (checked BEFORE country-level for precision)
+const CITY_PLACES = [
+  {n:'New York',       lat:40.71, lng:-74.01, c:'#4a90d9', k:['New York','Manhattan','Brooklyn','Bronx','Queens','Wall Street','Times Square']},
+  {n:'Washington DC',  lat:38.91, lng:-77.04, c:'#4a90d9', k:['Washington DC','White House','Pentagon','Capitol Hill','Congress']},
+  {n:'Los Angeles',    lat:34.05, lng:-118.24,c:'#4a90d9', k:['Los Angeles','Hollywood','LA ']},
+  {n:'Chicago',        lat:41.88, lng:-87.63, c:'#4a90d9', k:['Chicago']},
+  {n:'San Francisco',  lat:37.77, lng:-122.42,c:'#4a90d9', k:['San Francisco','Silicon Valley']},
+  {n:'Houston',        lat:29.76, lng:-95.37, c:'#4a90d9', k:['Houston']},
+  {n:'Miami',          lat:25.76, lng:-80.19, c:'#4a90d9', k:['Miami']},
+  {n:'London',         lat:51.51, lng:-0.13,  c:'#5b8dd9', k:['London','Westminster','Downing Street']},
+  {n:'Manchester',     lat:53.48, lng:-2.24,  c:'#5b8dd9', k:['Manchester']},
+  {n:'Edinburgh',      lat:55.95, lng:-3.19,  c:'#5b8dd9', k:['Edinburgh']},
+  {n:'Paris',          lat:48.86, lng:2.35,   c:'#3d5a80', k:['Paris','Élysée']},
+  {n:'Marseille',      lat:43.30, lng:5.37,   c:'#3d5a80', k:['Marseille']},
+  {n:'Berlin',         lat:52.52, lng:13.41,  c:'#8a8a8a', k:['Berlin','Bundestag']},
+  {n:'Munich',         lat:48.14, lng:11.58,  c:'#8a8a8a', k:['Munich']},
+  {n:'Frankfurt',      lat:50.11, lng:8.68,   c:'#8a8a8a', k:['Frankfurt']},
+  {n:'Moscow',         lat:55.76, lng:37.62,  c:'#c0392b', k:['Moscow','Kremlin']},
+  {n:'St Petersburg',  lat:59.93, lng:30.32,  c:'#c0392b', k:['St Petersburg','Saint Petersburg']},
+  {n:'Kyiv',           lat:50.45, lng:30.52,  c:'#e8b84b', k:['Kyiv','Kiev']},
+  {n:'Kharkiv',        lat:49.99, lng:36.23,  c:'#e8b84b', k:['Kharkiv']},
+  {n:'Odessa',         lat:46.47, lng:30.73,  c:'#e8b84b', k:['Odessa']},
+  {n:'Dnipro',         lat:48.46, lng:35.05,  c:'#e8b84b', k:['Dnipro']},
+  {n:'Zaporizhzhia',   lat:47.84, lng:35.14,  c:'#e8b84b', k:['Zaporizhzhia']},
+  {n:'Beijing',        lat:39.90, lng:116.40, c:'#e74c3c', k:['Beijing']},
+  {n:'Shanghai',       lat:31.23, lng:121.47, c:'#e74c3c', k:['Shanghai']},
+  {n:'Hong Kong',      lat:22.32, lng:114.17, c:'#e74c3c', k:['Hong Kong']},
+  {n:'Tokyo',          lat:35.68, lng:139.69, c:'#e74c3c', k:['Tokyo']},
+  {n:'Osaka',          lat:34.69, lng:135.50, c:'#e74c3c', k:['Osaka']},
+  {n:'Seoul',          lat:37.57, lng:126.98, c:'#1abc9c', k:['Seoul']},
+  {n:'Busan',          lat:35.18, lng:129.08, c:'#1abc9c', k:['Busan']},
+  {n:'Pyongyang',      lat:39.02, lng:125.75, c:'#8e44ad', k:['Pyongyang']},
+  {n:'Taipei',         lat:25.03, lng:121.57, c:'#2ecc71', k:['Taipei']},
+  {n:'Mumbai',         lat:19.08, lng:72.88,  c:'#e67e22', k:['Mumbai','Bombay']},
+  {n:'New Delhi',      lat:28.61, lng:77.21,  c:'#e67e22', k:['New Delhi','Delhi']},
+  {n:'Kolkata',        lat:22.57, lng:88.36,  c:'#e67e22', k:['Kolkata','Calcutta']},
+  {n:'Chennai',        lat:13.08, lng:80.27,  c:'#e67e22', k:['Chennai']},
+  {n:'Islamabad',      lat:33.69, lng:73.04,  c:'#27ae60', k:['Islamabad']},
+  {n:'Karachi',        lat:24.86, lng:67.01,  c:'#27ae60', k:['Karachi']},
+  {n:'Lahore',         lat:31.55, lng:74.35,  c:'#27ae60', k:['Lahore']},
+  {n:'Kabul',          lat:34.53, lng:69.17,  c:'#95a5a6', k:['Kabul']},
+  {n:'Tehran',         lat:35.69, lng:51.39,  c:'#27ae60', k:['Tehran']},
+  {n:'Baghdad',        lat:33.31, lng:44.37,  c:'#d4ac0d', k:['Baghdad']},
+  {n:'Mosul',          lat:36.34, lng:43.13,  c:'#d4ac0d', k:['Mosul']},
+  {n:'Basra',          lat:30.51, lng:47.81,  c:'#d4ac0d', k:['Basra']},
+  {n:'Damascus',       lat:33.51, lng:36.29,  c:'#bdc3c7', k:['Damascus']},
+  {n:'Aleppo',         lat:36.20, lng:37.16,  c:'#bdc3c7', k:['Aleppo']},
+  {n:'Jerusalem',      lat:31.77, lng:35.23,  c:'#3498db', k:['Jerusalem']},
+  {n:'Tel Aviv',       lat:32.09, lng:34.78,  c:'#3498db', k:['Tel Aviv']},
+  {n:'Gaza City',      lat:31.50, lng:34.47,  c:'#e74c3c', k:['Gaza City','Gaza Strip','Khan Younis','Rafah']},
+  {n:'Beirut',         lat:33.89, lng:35.50,  c:'#27ae60', k:['Beirut']},
+  {n:'Sanaa',          lat:15.35, lng:44.21,  c:'#c0392b', k:['Sanaa']},
+  {n:'Riyadh',         lat:24.71, lng:46.68,  c:'#27ae60', k:['Riyadh']},
+  {n:'Dubai',          lat:25.20, lng:55.27,  c:'#3498db', k:['Dubai']},
+  {n:'Abu Dhabi',      lat:24.45, lng:54.65,  c:'#3498db', k:['Abu Dhabi']},
+  {n:'Doha',           lat:25.29, lng:51.53,  c:'#8e44ad', k:['Doha']},
+  {n:'Istanbul',       lat:41.01, lng:28.98,  c:'#c0392b', k:['Istanbul']},
+  {n:'Ankara',         lat:39.93, lng:32.86,  c:'#c0392b', k:['Ankara']},
+  {n:'Cairo',          lat:30.04, lng:31.24,  c:'#d4ac0d', k:['Cairo']},
+  {n:'Lagos',          lat:6.52,  lng:3.38,   c:'#27ae60', k:['Lagos']},
+  {n:'Abuja',          lat:9.06,  lng:7.49,   c:'#27ae60', k:['Abuja']},
+  {n:'Nairobi',        lat:-1.29, lng:36.82,  c:'#c0392b', k:['Nairobi']},
+  {n:'Johannesburg',   lat:-26.20,lng:28.05,  c:'#27ae60', k:['Johannesburg']},
+  {n:'Cape Town',      lat:-33.93,lng:18.42,  c:'#27ae60', k:['Cape Town']},
+  {n:'Khartoum',       lat:15.59, lng:32.53,  c:'#c0392b', k:['Khartoum']},
+  {n:'Mogadishu',      lat:2.05,  lng:45.34,  c:'#c0392b', k:['Mogadishu']},
+  {n:'Tripoli',        lat:32.90, lng:13.18,  c:'#bdc3c7', k:['Tripoli']},
+  {n:'Sydney',         lat:-33.87,lng:151.21, c:'#27ae60', k:['Sydney']},
+  {n:'Melbourne',      lat:-37.81,lng:144.96, c:'#27ae60', k:['Melbourne']},
+  {n:'Toronto',        lat:43.65, lng:-79.38, c:'#c0392b', k:['Toronto']},
+  {n:'Vancouver',      lat:49.28, lng:-123.12,c:'#c0392b', k:['Vancouver']},
+  {n:'Ottawa',         lat:45.42, lng:-75.70, c:'#c0392b', k:['Ottawa']},
+  {n:'São Paulo',      lat:-23.55,lng:-46.63, c:'#27ae60', k:['São Paulo','Sao Paulo']},
+  {n:'Rio de Janeiro', lat:-22.91,lng:-43.17, c:'#27ae60', k:['Rio de Janeiro']},
+  {n:'Buenos Aires',   lat:-34.60,lng:-58.38, c:'#3498db', k:['Buenos Aires']},
+  {n:'Mexico City',    lat:19.43, lng:-99.13, c:'#27ae60', k:['Mexico City']},
+  {n:'Bogotá',         lat:4.71,  lng:-74.07, c:'#f39c12', k:['Bogotá','Bogota']},
+  {n:'Lima',           lat:-12.05,lng:-77.04, c:'#c0392b', k:['Lima']},
+  {n:'Santiago',       lat:-33.45,lng:-70.67, c:'#c0392b', k:['Santiago']},
+  {n:'Havana',         lat:23.11, lng:-82.37, c:'#c0392b', k:['Havana']},
+  {n:'Bangkok',        lat:13.76, lng:100.50, c:'#c0392b', k:['Bangkok']},
+  {n:'Singapore',      lat:1.35,  lng:103.82, c:'#3498db', k:['Singapore']},
+  {n:'Jakarta',        lat:-6.21, lng:106.85, c:'#c0392b', k:['Jakarta']},
+  {n:'Manila',         lat:14.60, lng:120.98, c:'#3498db', k:['Manila']},
+  {n:'Hanoi',          lat:21.03, lng:105.85, c:'#c0392b', k:['Hanoi']},
+  {n:'Kuala Lumpur',   lat:3.14,  lng:101.69, c:'#c0392b', k:['Kuala Lumpur']},
+  {n:'Madrid',         lat:40.42, lng:-3.70,  c:'#c0392b', k:['Madrid']},
+  {n:'Barcelona',      lat:41.39, lng:2.17,   c:'#c0392b', k:['Barcelona']},
+  {n:'Rome',           lat:41.90, lng:12.50,  c:'#27ae60', k:['Rome','Vatican']},
+  {n:'Milan',          lat:45.46, lng:9.19,   c:'#27ae60', k:['Milan']},
+  {n:'Athens',         lat:37.98, lng:23.73,  c:'#3498db', k:['Athens']},
+  {n:'Amsterdam',      lat:52.37, lng:4.90,   c:'#e67e22', k:['Amsterdam']},
+  {n:'Brussels',       lat:50.85, lng:4.35,   c:'#f1c40f', k:['Brussels']},
+  {n:'Geneva',         lat:46.20, lng:6.14,   c:'#c0392b', k:['Geneva']},
+  {n:'Zurich',         lat:47.37, lng:8.54,   c:'#c0392b', k:['Zurich']},
+  {n:'Davos',          lat:46.80, lng:9.84,   c:'#c0392b', k:['Davos']},
+  {n:'Vienna',         lat:48.21, lng:16.37,  c:'#c0392b', k:['Vienna']},
+  {n:'Warsaw',         lat:52.23, lng:21.01,  c:'#c0392b', k:['Warsaw']},
+  {n:'Budapest',       lat:47.50, lng:19.04,  c:'#c0392b', k:['Budapest']},
+  {n:'Stockholm',      lat:59.33, lng:18.07,  c:'#f1c40f', k:['Stockholm']},
+  {n:'Helsinki',       lat:60.17, lng:24.94,  c:'#3498db', k:['Helsinki']},
+  {n:'Kinshasa',       lat:-4.32, lng:15.31,  c:'#c0392b', k:['Kinshasa']},
+];
+
+function detectPlace(title, desc) {
+  const txt = (title + ' ' + stripTags(desc || '')).replace(/\s+/g,' ');
+  // Check cities FIRST for precise location
+  for (const p of CITY_PLACES) {
+    for (const k of p.k) {
+      if (txt.includes(k)) return p;
+    }
+  }
+  // Fallback to country-level
+  for (const p of PLACES) {
+    for (const k of p.k) {
+      if (txt.includes(k)) return p;
+    }
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════
+// TOPICS  for grouping & connection lines
+// ══════════════════════════════════════════════
+const TOPICS = [
+  { id:'conflict', name:'Conflict',  color:'#e74c3c', k:['war','military','troops','attack','bomb','strike','killed','missile','army','weapon','battle','ceasefire','invasion','airstrike','soldier','combat','siege','shelling'] },
+  { id:'politics', name:'Politics',  color:'#3498db', k:['president','minister','parliament','election','vote','policy','government','law','summit','diplomat','sanction','treaty','coup','protest','rally','impeach'] },
+  { id:'economy',  name:'Economy',   color:'#f39c12', k:['economy','market','trade','inflation','GDP','stock','bank','billion','million','dollar','tariff','invest','recession','debt','budget','tax','crypto'] },
+  { id:'tech',     name:'Tech',      color:'#9b59b6', k:['tech','AI ','artificial intelligence','digital','cyber','software','robot','quantum','chip','semiconductor','data breach','hack'] },
+  { id:'climate',  name:'Climate',   color:'#2ecc71', k:['climate','environment','carbon','emission','weather','flood','drought','wildfire','hurricane','cyclone','tornado','renewable','earthquake','tsunami'] },
+  { id:'health',   name:'Health',    color:'#e67e22', k:['health','disease','pandemic','vaccine','hospital','WHO','outbreak','medical','drug','cancer','virus','epidemic','bird flu'] },
+  { id:'sport',    name:'Sport',     color:'#1abc9c', k:['sport','football','soccer','cricket','rugby','tennis','olympic','championship','league','cup final','tournament','world cup','AFL','NBA','FIFA'] },
+];
+
+function detectTopic(title, desc) {
+  const txt = (title + ' ' + (desc || '')).toLowerCase();
+  for (const t of TOPICS) {
+    for (const k of t.k) {
+      if (txt.includes(k)) return t;
+    }
+  }
+  return null;
+}
+
+// ══════════════════════════════════════════════
+// RSS FEEDS  (fetched via corsproxy.io)
+// ══════════════════════════════════════════════
+const PROXY = 'https://corsproxy.io/?';
+
+// Default feeds (used if feeds.yaml can't be loaded)
+let FEEDS = [
+  { label:'BBC World',    url:'https://feeds.bbci.co.uk/news/world/rss.xml' },
+  { label:'Al Jazeera',  url:'https://www.aljazeera.com/xml/rss/all.xml' },
+  { label:'DW News',     url:'https://rss.dw.com/rdf/rss-en-world' },
+  { label:'NPR World',   url:'https://feeds.npr.org/1004/rss.xml' },
+  { label:'The Guardian',url:'https://www.theguardian.com/world/rss' },
+  { label:'France 24',   url:'https://www.france24.com/en/rss' },
+  { label:'Reuters',     url:'https://feeds.reuters.com/reuters/worldNews' },
+  { label:'CBC News',    url:'https://www.cbc.ca/cmlink/rss-world' },
+];
+
+// Load feeds from feeds.yaml (handles category groups)
+let ALL_YAML_FEEDS = {};  // category → [{label, url}]
+async function loadFeedsYaml() {
+  try {
+    const r = await fetch('feeds.yaml', { signal: AbortSignal.timeout(3000) });
+    if (!r.ok) return;
+    const text = await r.text();
+    const parsed = [];
+    let currentCat = 'global';
+    ALL_YAML_FEEDS = {};
+    for (const line of text.split('\n')) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith('#')) continue;
+      // Category header like "global:", "tech:", etc.
+      const catMatch = trimmed.match(/^(\w[\w\s]*):$/);
+      if (catMatch) { currentCat = catMatch[1].trim(); continue; }
+      if (trimmed.startsWith('- label:')) {
+        const entry = { label: trimmed.replace('- label:','').trim(), url:'', cat: currentCat };
+        parsed.push(entry);
+      } else if (trimmed.startsWith('url:') && parsed.length) {
+        parsed[parsed.length - 1].url = trimmed.replace('url:','').trim();
+      }
+    }
+    const valid = parsed.filter(f => f.label && f.url);
+    // Group by category
+    for (const f of valid) {
+      if (!ALL_YAML_FEEDS[f.cat]) ALL_YAML_FEEDS[f.cat] = [];
+      ALL_YAML_FEEDS[f.cat].push(f);
+    }
+    // Default FEEDS = global category only (for initial load — fewer requests)
+    if (ALL_YAML_FEEDS.global?.length > 0) {
+      FEEDS = ALL_YAML_FEEDS.global;
+      console.log(`Loaded ${valid.length} feeds from feeds.yaml (${FEEDS.length} global for initial load)`);
+    }
+  } catch(e) { console.log('feeds.yaml not found, using defaults'); }
+}
+
+function stripTags(html) {
+  const d = document.createElement('div');
+  d.innerHTML = html;
+  return (d.textContent || '').replace(/\s+/g,' ').trim();
+}
+
+function parseRSS(xmlText, label) {
+  const doc = new DOMParser().parseFromString(xmlText, 'application/xml');
+  const items = [];
+  for (const item of doc.querySelectorAll('item')) {
+    const get = (tag) => item.querySelector(tag)?.textContent?.trim() || '';
+    const title   = get('title');
+    const link    = get('link') || item.querySelector('link')?.getAttribute('href') || '';
+    const desc    = get('description');
+    const content = item.querySelector('content\\:encoded, encoded')?.textContent?.trim() || desc;
+    const date    = get('pubDate') || get('dc\\:date') || '';
+    const img     = item.querySelector('media\\:thumbnail, media\\:content, enclosure')?.getAttribute('url') || null;
+    if (!title) continue;
+    items.push({
+      id:     Math.random().toString(36).slice(2, 10),
+      title, desc, content,
+      url:    link,
+      date:   date ? new Date(date).toISOString() : '',
+      img,
+      source: label,
+      place:  detectPlace(title, desc + ' ' + content),
+      topic:  detectTopic(title, desc + ' ' + content),
+    });
+  }
+  return items;
+}
+
+async function proxyFetch(url) {
+  for (let i = 0; i < 3; i++) {
+    try {
+      const r = await fetch(PROXY + encodeURIComponent(url), { signal: AbortSignal.timeout(12000) });
+      if (r.ok) return r.text();
+      // Retry on rate-limit / server errors
+      if (i < 2 && (r.status === 403 || r.status === 429 || r.status >= 500)) {
+        await new Promise(res => setTimeout(res, 1200 * (i + 1)));
+        continue;
+      }
+      throw new Error('HTTP ' + r.status);
+    } catch(e) {
+      if (i === 2 || e.message.startsWith('HTTP')) throw e;
+      await new Promise(res => setTimeout(res, 800));
+    }
+  }
+  throw new Error('proxy failed after retries');
+}
+
+// Fetch feeds in batches to avoid rate-limiting the proxy
+async function loadFeedsBatched(feeds, batchSize) {
+  const all = [];
+  for (let i = 0; i < feeds.length; i += batchSize) {
+    const batch = feeds.slice(i, i + batchSize);
+    const results = await Promise.allSettled(batch.map(f => loadFeed(f)));
+    for (const r of results) {
+      if (r.status === 'fulfilled') all.push(...r.value);
+      else console.warn('Feed failed:', r.reason?.message);
+    }
+    // Pause between batches to avoid proxy rate-limiting
+    if (i + batchSize < feeds.length) await new Promise(r => setTimeout(r, 1000));
+  }
+  return all;
+}
+
+async function loadFeed(feed) {
+  const xml = await proxyFetch(feed.url);
+  return parseRSS(xml, feed.label);
+}
+
+// ══════════════════════════════════════════════
+// OLLAMA AI GEOCODING
+// ══════════════════════════════════════════════
+const OLLAMA_URL = 'http://localhost:11434';
+let ollamaModel  = null;
+
+async function checkOllama() {
+  try {
+    const r = await fetch(OLLAMA_URL + '/api/tags', { signal: AbortSignal.timeout(3000) });
+    const d = await r.json();
+    const models = (d.models || []).map(m => m.name);
+    for (const pref of ['qwen2.5:3b','llama3.2:3b','mistral:7b']) {
+      if (models.some(n => n === pref || n.startsWith(pref))) { ollamaModel = pref; break; }
+    }
+    if (!ollamaModel && models.length) ollamaModel = models[0];
+    if (ollamaModel) console.log('Ollama ready:', ollamaModel);
+    else console.log('Ollama: no models found');
+  } catch { console.log('Ollama: offline (keyword geocoding only)'); }
+}
+
+async function ollamaGeocode(title, ctx) {
+  if (!ollamaModel) return null;
+  const prompt =
+`Find the most specific physical location of this news event. Go down to the city level whenever possible.
+If a specific city, town, or district is mentioned, use its exact coordinates.
+If only a country is mentioned, use its capital city.
+Always give your best guess. Only use null if there is truly no geographic location.
+Headline: "${title}"
+${ctx ? `Context: "${ctx.slice(0,200)}"` : ''}
+Reply ONLY with JSON: {"city":"<specific city name>","country":"<country>","lat":<number>,"lng":<number>}`;
+  try {
+    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: ollamaModel, prompt, stream: false, format: 'json',
+        options: { temperature: 0, num_predict: 200 } }),
+      signal: AbortSignal.timeout(25000),
+    });
+    const raw = (await res.json()).response || '';
+    // Regex parser — qwen2.5 outputs malformed JSON
+    const city    = (raw.match(/"city"\s*[^:]*:\s*"([^"]*)"/)    || [])[1]?.trim() || null;
+    const country = (raw.match(/"country"\s*[^:]*:\s*"([^"]+)"/) || [])[1]?.trim() || null;
+    const lat     = parseFloat((raw.match(/"lat[^":\d-]*[":]*\s*([-\d.]+)/) || [])[1]);
+    const lng     = parseFloat((raw.match(/"lng[^":\d-]*[":]*\s*([-\d.]+)/) || [])[1]);
+    if (!isNaN(lat) && !isNaN(lng) && (city || country)) {
+      const name = city || country;
+      // Find matching PLACES color or use default
+      const placeMatch = PLACES.find(p => p.n === country || p.n === city);
+      return { n: name, lat, lng, c: placeMatch?.c || '#e74c3c' };
+    }
+  } catch(e) { console.warn('Ollama geocode failed:', e.message); }
+  return null;
+}
+
+// ══════════════════════════════════════════════
+// OLLAMA CONTENT ANALYSIS (for smart connections)
+// ══════════════════════════════════════════════
+const _tagCache = {}; // article id → {tags:[...]}
+
+async function ollamaAnalyze(article) {
+  if (_tagCache[article.id]) return _tagCache[article.id];
+  if (!ollamaModel) {
+    // Fallback: extract simple keywords from title
+    const words = article.title.toLowerCase()
+      .replace(/[^a-z0-9\s'-]/g, ' ')
+      .split(/\s+/)
+      .filter(w => w.length > 3 && !['the','and','for','with','from','that','this','have','been','will','said','says','after','about','over','into','than','also','more','just','back','when','what','where','which','their','other','some','could','would','them','were','being'].includes(w));
+    _tagCache[article.id] = { tags: [...new Set(words)].slice(0, 8) };
+    return _tagCache[article.id];
+  }
+
+  const text = stripTags(article.desc || article.content || '').slice(0, 400);
+  const prompt =
+`Extract 6-10 specific connection tags from this news article. These will be used to find related stories.
+Include: specific people names (e.g. "trump", "zelensky"), organizations (e.g. "nato", "opec"), specific events or topics (e.g. "ukraine war", "gaza ceasefire", "ai regulation", "bird flu outbreak"), key locations, and industry terms.
+Be specific and lowercase. Use multi-word phrases when needed.
+Title: "${article.title}"
+${text ? `Context: "${text}"` : ''}
+Reply ONLY with JSON: {"tags":["tag1","tag2","tag3",...]}`;
+
+  try {
+    const res = await fetch(`${OLLAMA_URL}/api/generate`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ model: ollamaModel, prompt, stream: false, format: 'json',
+        options: { temperature: 0, num_predict: 200 } }),
+      signal: AbortSignal.timeout(15000),
+    });
+    const raw = (await res.json()).response || '';
+    const tagsMatch = raw.match(/"tags"\s*:\s*\[([\s\S]*?)\]/);
+    if (tagsMatch) {
+      const tags = [...tagsMatch[1].matchAll(/"([^"]+)"/g)].map(m => m[1].toLowerCase().trim()).filter(t => t.length > 1);
+      if (tags.length > 0) {
+        _tagCache[article.id] = { tags, ai: true };
+        return _tagCache[article.id];
+      }
+    }
+  } catch(e) { console.warn('Ollama analyze failed:', e.message); }
+
+  // Fallback to simple word extraction
+  const words = article.title.toLowerCase().replace(/[^a-z0-9\s'-]/g, ' ').split(/\s+/)
+    .filter(w => w.length > 3 && !['the','and','for','with','from','that','this','have','been','will','said','says','after','about','over','into','than','also','more','just','back','when','what','where','which','their','other','some','could','would','them','were','being'].includes(w));
+  _tagCache[article.id] = { tags: [...new Set(words)].slice(0, 8) };
+  return _tagCache[article.id];
+}
+
+// Distance in km between two lat/lng points (haversine)
+function distKm(lat1, lng1, lat2, lng2) {
+  const R = 6371;
+  const dLat = (lat2 - lat1) * Math.PI / 180;
+  const dLng = (lng2 - lng1) * Math.PI / 180;
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLng/2)**2;
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a));
+}
+
+// Max distance (km) for an article to be considered "local" at given zoom
+function maxDistForZoom(zoom) {
+  if (zoom >= 12) return 30;
+  if (zoom >= 10) return 80;
+  if (zoom >= 9)  return 150;
+  if (zoom >= 7)  return 500;
+  if (zoom >= 5)  return 2000;
+  return 20000; // global
+}
+
+// Fetch Google News for a specific query and geocode each article
+async function fetchLocalNews(queryLabel, vp) {
+  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(queryLabel + ' news')}&hl=en-US&gl=US&ceid=US:en`;
+  const xml = await proxyFetch(rssUrl);
+  const items = parseRSS(xml, queryLabel);
+
+  // Deduplicate against existing articles
+  const existing = new Set(articles.map(a => a.title.slice(0, 60).toLowerCase()));
+  const fresh = items.filter(a => !existing.has(a.title.slice(0, 60).toLowerCase()));
+
+  const btn = document.getElementById('btn-rf');
+  const center = map.getCenter();
+  const zoom = vp?.zoom || map.getZoom();
+  const maxDist = maxDistForZoom(zoom);
+  let added = 0;
+
+  for (let i = 0; i < Math.min(fresh.length, 25); i++) {
+    const a = fresh[i];
+    setStatus(`Geocoding ${i + 1}/${Math.min(fresh.length, 25)}: ${queryLabel}…`);
+
+    // Try Ollama first, then keyword fallback
+    if (!a.place && ollamaModel) {
+      const geo = await ollamaGeocode(a.title, stripTags(a.desc).slice(0, 200));
+      if (geo) a.place = geo;
+    }
+
+    // Filter out articles too far from current view
+    if (a.place) {
+      const d = distKm(center.lat, center.lng, a.place.lat, a.place.lng);
+      if (d > maxDist) continue; // skip far-away news
+    }
+
+    a.isLocal = true;  // mark as local news
+    articles.push(a);
+    sortArticlesByViewport();
+    added++;
+
+    // Progressive render every article
+    renderList();
+    renderAllPins();
+  }
+
+  const geo = articles.filter(a => a.place).length;
+  setStatus(`${articles.length} stories · ${geo} pinned · +${added} from ${queryLabel}`);
+  renderLegend();
+  btn.disabled = false;
+}
+
+// ══════════════════════════════════════════════
+// MAP
+// ══════════════════════════════════════════════
+const map = L.map('map', { center:[20,10], zoom:2, zoomControl:true });
+L.tileLayer('https://{s}.basemaps.cartocdn.com/dark_all/{z}/{x}/{y}{r}.png', {
+  attribution:'&copy; OpenStreetMap &copy; CARTO', maxZoom:19
+}).addTo(map);
+
+const pinsLayer  = L.layerGroup().addTo(map);
+const linesLayer = L.layerGroup().addTo(map);
+const pinMap     = {};    // article id → marker
+let   hlMarker   = null;  // highlight ring for selected article
+
+// One dot per unique location. If multiple stories share exact coords, show count badge.
+// Clicking a cluster dot opens a picker popup; clicking a single-story dot opens the article.
+function renderAllPins() {
+  pinsLayer.clearLayers();
+  for (const k in pinMap) delete pinMap[k];
+
+  // Group articles by exact location
+  const groups = {};
+  for (const a of articles) {
+    if (!a.place) continue;
+    const key = `${a.place.lat},${a.place.lng}`;
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(a);
+  }
+
+  for (const key of Object.keys(groups)) {
+    const group = groups[key];
+    const n = group.length;
+    const first = group[0];
+    const lat = first.place.lat, lng = first.place.lng;
+
+    // Pick the most prominent topic color, or place color
+    const topicCounts = {};
+    for (const a of group) {
+      if (a.topic) topicCounts[a.topic.id] = (topicCounts[a.topic.id] || 0) + 1;
+    }
+    const topTopic = Object.keys(topicCounts).sort((a,b) => topicCounts[b] - topicCounts[a])[0];
+    const color = (topTopic && TOPICS.find(t => t.id === topTopic)?.color) || first.place.c;
+
+    let icon;
+    if (n === 1) {
+      icon = L.divIcon({
+        html: `<div style="width:10px;height:10px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,.45);box-shadow:0 0 5px ${color}55;cursor:pointer"></div>`,
+        className: '', iconSize: [10, 10], iconAnchor: [5, 5],
+      });
+    } else {
+      // Cluster dot with count badge
+      const size = Math.min(10 + n * 1.5, 24);
+      icon = L.divIcon({
+        html: `<div style="width:${size}px;height:${size}px;border-radius:50%;background:${color};border:1.5px solid rgba(255,255,255,.55);box-shadow:0 0 8px ${color}66;cursor:pointer;display:flex;align-items:center;justify-content:center;font-size:${Math.max(8, size * 0.45)}px;font-weight:700;color:#fff;text-shadow:0 0 3px #000">${n}</div>`,
+        className: '', iconSize: [size, size], iconAnchor: [size/2, size/2],
+      });
+    }
+
+    // Tooltip
+    let tip = '<div style="min-width:140px">';
+    if (n === 1) {
+      if (first.img) tip += `<img class="tip-img" src="${first.img}" onerror="this.style.display='none'"/>`;
+      tip += '<div class="tip-body">';
+      tip += `<div class="tip-title">${first.title}</div>`;
+      if (first.topic) tip += `<div class="tip-topic" style="color:${first.topic.color}">${first.topic.name}</div>`;
+      tip += '</div>';
+    } else {
+      tip += '<div class="tip-body">';
+      tip += `<div class="tip-title" style="margin-bottom:4px"><strong>${first.place.n}</strong> · ${n} stories</div>`;
+      for (const a of group.slice(0, 4)) {
+        tip += `<div style="font-size:.62rem;color:#c5c0b8;margin-bottom:2px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;max-width:200px">• ${a.title}</div>`;
+      }
+      if (n > 4) tip += `<div style="font-size:.55rem;color:var(--muted)">+${n - 4} more…</div>`;
+      tip += '</div>';
+    }
+    tip += '</div>';
+
+    const marker = L.marker([lat, lng], { icon })
+      .bindTooltip(tip, { className: 'ntip', direction: 'top', offset: [0, -8] })
+      .on('click', () => {
+        if (n === 1) {
+          openArticle(first.id);
+        } else {
+          showClusterPopup(group, lat, lng);
+        }
+      });
+    pinsLayer.addLayer(marker);
+    // Map all articles in this group to this marker
+    for (const a of group) pinMap[a.id] = marker;
+  }
+}
+
+// Show cluster stories as a Leaflet popup on the map (above everything including right panel)
+let clusterPopup = null;
+function showClusterPopup(group, lat, lng) {
+  if (clusterPopup) { map.closePopup(clusterPopup); clusterPopup = null; }
+  const locName = group[0].place.n;
+  const items = group.map(a => {
+    const topicTag = a.topic ? `<span style="font-size:.5rem;color:${a.topic.color};text-transform:uppercase;letter-spacing:.04em;margin-left:4px">${a.topic.name}</span>` : '';
+    return `<div class="cluster-item" data-aid="${a.id}">
+      <div style="font-size:.55rem;text-transform:uppercase;letter-spacing:.06em;color:#7a7468;margin-bottom:2px">${a.source}${topicTag}</div>
+      <div style="font-size:.76rem;line-height:1.35;color:#f0ebe0">${a.title}</div>
+      <div style="font-size:.55rem;color:#7a7468;margin-top:2px">${timeAgo(a.date)}</div>
+    </div>`;
+  }).join('');
+
+  const html = `<div style="padding:8px 12px 4px;border-bottom:1px solid #2e2c29">
+    <div style="font-size:.85rem;font-weight:700;color:#f0ebe0">${locName}</div>
+    <div style="font-size:.6rem;color:#7a7468;margin-bottom:4px">${group.length} stories</div>
+  </div>${items}`;
+
+  clusterPopup = L.popup({ className: 'cluster-popup', maxWidth: 280, minWidth: 240, closeButton: true, autoPan: true })
+    .setLatLng([lat, lng])
+    .setContent(html)
+    .openOn(map);
+
+  // Attach click handlers after popup is added to DOM
+  setTimeout(() => {
+    document.querySelectorAll('.cluster-item').forEach(el => {
+      el.addEventListener('click', () => {
+        const aid = el.getAttribute('data-aid');
+        if (aid) openArticle(aid);
+      });
+    });
+  }, 50);
+}
+
+// Connection ID tracks which analysis is current (prevents stale lines from old clicks)
+let _connId = 0;
+
+async function showConnectionsFor(article) {
+  linesLayer.clearLayers();
+  if (!article?.place) return;
+
+  const myId = ++_connId;
+
+  // Analyze clicked article (Ollama or fallback) — single AI call
+  const analysis = await ollamaAnalyze(article);
+  if (myId !== _connId) return; // user clicked something else while we were analyzing
+
+  const tags = analysis.tags;
+  if (!tags.length) return;
+
+  // Search other articles' text for tag matches (instant, no AI calls)
+  const candidates = articles.filter(a => a.id !== article.id && a.place);
+
+  for (const r of candidates) {
+    const rText = (r.title + ' ' + stripTags(r.desc || r.content || '')).toLowerCase();
+
+    // Find which tags match this candidate
+    const shared = tags.filter(tag => {
+      // For multi-word tags, check direct inclusion
+      if (tag.includes(' ')) return rText.includes(tag);
+      // For single words, use word-boundary-ish match
+      return new RegExp('\\b' + tag.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '\\b', 'i').test(rText);
+    });
+
+    if (shared.length >= 1) {
+      const strength = Math.min(shared.length, 5);
+      const opacity = 0.15 + strength * 0.09;
+      const weight = 1 + strength * 0.4;
+      const label = shared.slice(0, 3).join(' · ');
+
+      // Pick color: use topic color if same topic, else a neutral gold
+      const color = (r.topic?.id === article.topic?.id && article.topic)
+        ? article.topic.color
+        : '#f0c040';
+
+      const line = L.polyline(
+        [[article.place.lat, article.place.lng], [r.place.lat, r.place.lng]],
+        { color, weight, opacity, dashArray: '6 4' }
+      );
+      line.bindTooltip(`<div class="tip-body"><div class="tip-title" style="font-size:.65rem">${label}</div><div style="font-size:.55rem;color:#7a7468;margin-top:2px">${r.title.slice(0,60)}…</div></div>`,
+        { sticky: true, className: 'ntip', direction: 'top' });
+      linesLayer.addLayer(line);
+    }
+  }
+
+  // Status update
+  const connCount = linesLayer.getLayers().length;
+  if (connCount > 0) {
+    const tagStr = tags.slice(0, 4).join(', ');
+    setStatus(`${connCount} connection${connCount>1?'s':''} — ${analysis.ai ? '🤖' : '🔤'} ${tagStr}`);
+  }
+}
+
+function highlightPin(a) {
+  if (hlMarker) { hlMarker.remove(); hlMarker = null; }
+  if (!a?.place) return;
+  const color = a.topic?.color || a.place.c;
+  const icon = L.divIcon({
+    html: `<svg width="36" height="36" viewBox="0 0 36 36" style="pointer-events:none"><circle cx="18" cy="18" r="16" fill="${color}" opacity=".15" class="pring"/><circle cx="18" cy="18" r="8" fill="${color}" opacity=".3"/><circle cx="18" cy="18" r="4.5" fill="${color}"/></svg>`,
+    className: '', iconSize: [36, 36], iconAnchor: [18, 18],
+  });
+  hlMarker = L.marker([a.place.lat, a.place.lng], { icon, zIndexOffset: -1000, interactive: false }).addTo(map);
+}
+
+function renderLegend() {
+  const used = new Set(articles.filter(a => a.topic).map(a => a.topic.id));
+  const rows = TOPICS.filter(t => used.has(t.id)).map(t =>
+    `<div class="leg-row"><span class="leg-line" style="border-color:${t.color}"></span> ${t.name}</div>`
+  ).join('');
+  document.getElementById('legend').innerHTML = rows || '';
+}
+
+// ══════════════════════════════════════════════
+// STATE & UTILS
+// ══════════════════════════════════════════════
+let articles        = [];
+let activeId        = null;
+let query           = '';
+let viewportKey     = '';   // tracks last fetched viewport
+let fetchTimer      = null;
+let isFetching      = false;
+
+function setStatus(s) { document.getElementById('hdr-status').textContent = s; }
+
+function timeAgo(iso) {
+  if (!iso) return '';
+  const s = (Date.now() - new Date(iso)) / 1000;
+  if (s < 60)    return 'just now';
+  if (s < 3600)  return Math.floor(s/60) + 'm ago';
+  if (s < 86400) return Math.floor(s/3600) + 'h ago';
+  return Math.floor(s/86400) + 'd ago';
+}
+
+// ══════════════════════════════════════════════
+// RENDER LIST
+// ══════════════════════════════════════════════
+function renderList() {
+  const pool = query
+    ? articles.filter(a => (a.title+' '+(a.place?.n||'')+' '+a.source).toLowerCase().includes(query))
+    : articles;
+  document.getElementById('list-cnt').textContent = pool.length + ' stories';
+  const body = document.getElementById('list-body');
+  if (!pool.length) {
+    body.innerHTML = '<div class="empty">No stories match.</div>';
+    return;
+  }
+  body.innerHTML = pool.map(a => `
+    <div class="ni${a.id===activeId?' active':''}" onclick="openArticle('${a.id}')">
+      <div class="ni-src">${a.source}${a.isLocal ? '<span class="ni-local">LOCAL</span>' : ''}</div>
+      <div class="ni-title">${a.title}</div>
+      <div class="ni-meta">
+        ${a.place
+          ? `<span><span class="dot" style="background:${a.place.c}"></span> ${a.place.n}</span>`
+          : '<span>🌐 World</span>'}
+        <span>${timeAgo(a.date)}</span>
+      </div>
+    </div>`).join('');
+}
+
+// ══════════════════════════════════════════════
+// ARTICLE PANEL
+// ══════════════════════════════════════════════
+function openArticle(id) {
+  // Close cluster popup if open
+  if (clusterPopup) { map.closePopup(clusterPopup); clusterPopup = null; }
+
+  activeId = id;
+  const a = articles.find(x => x.id === id);
+  if (!a) return;
+
+  // highlight list row
+  document.querySelectorAll('.ni').forEach(el =>
+    el.classList.toggle('active', el.getAttribute('onclick')?.includes(id)));
+
+  // highlight pin + find connections in background (user can read immediately)
+  highlightPin(a);
+  showConnectionsFor(a); // async — draws lines progressively while user reads
+  if (a.place) {
+    _suppressAutoFetch = true;
+    map.flyTo([a.place.lat, a.place.lng], Math.max(map.getZoom(), 4), {duration: 0.8});
+    setTimeout(() => { _suppressAutoFetch = false; }, 1500);
+  }
+
+  // build panel
+  const raw   = a.content || a.desc || '';
+  const plain = stripTags(raw);
+  const paras = plain.split(/\n\n+|(?<=\.)\s{2,}/).map(p=>p.trim()).filter(p=>p.length>40);
+  const body  = paras.length
+    ? paras.map(p=>`<p>${p}</p>`).join('')
+    : `<p>${plain || 'No content available.'}</p>`;
+
+  const fmtDate = a.date
+    ? new Date(a.date).toLocaleString('en-US',{month:'short',day:'numeric',hour:'2-digit',minute:'2-digit'})
+    : '';
+
+  document.getElementById('art-body').innerHTML = `
+    <div class="art-src">${a.source}</div>
+    <div class="art-title">${a.title}</div>
+    <div class="art-meta">${fmtDate}</div>
+    ${a.place ? `<div class="art-loc"><span class="dot" style="background:${a.place.c}"></span>${a.place.n}</div>` : ''}
+    ${a.img ? `<div class="art-img"><img src="${a.img}" onerror="this.parentElement.style.display='none'"/></div>` : ''}
+    <div class="art-text">${body}</div>
+    <a class="art-link" href="${a.url}" target="_blank" rel="noopener">Read full article ↗</a>
+  `;
+  document.getElementById('art-panel').classList.add('open');
+}
+
+document.getElementById('art-close').addEventListener('click', () => {
+  document.getElementById('art-panel').classList.remove('open');
+  activeId = null;
+  _connId++; // cancel any in-progress connection analysis
+  if (hlMarker) { hlMarker.remove(); hlMarker = null; }
+  linesLayer.clearLayers();
+  document.querySelectorAll('.ni.active').forEach(el => el.classList.remove('active'));
+});
+
+// ══════════════════════════════════════════════
+// SEARCH
+// ══════════════════════════════════════════════
+document.getElementById('search').addEventListener('input', function() {
+  query = this.value.trim().toLowerCase();
+  renderList();
+});
+
+// ══════════════════════════════════════════════
+// REGIONAL RSS FEEDS  (BBC editorial regions)
+// ══════════════════════════════════════════════
+// Each region has multiple feeds for richer coverage
+const REGIONS = [
+  { label:'UK',
+    feeds:[
+      { label:'BBC UK',      url:'https://feeds.bbci.co.uk/news/uk/rss.xml' },
+      { label:'Guardian UK', url:'https://www.theguardian.com/uk-news/rss' },
+    ],
+    c:['United Kingdom'] },
+
+  { label:'US & Canada',
+    feeds:[
+      { label:'BBC US/Canada', url:'https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml' },
+      { label:'NPR News',      url:'https://feeds.npr.org/1004/rss.xml' },
+      { label:'CBC World',     url:'https://www.cbc.ca/cmlink/rss-world' },
+    ],
+    c:['United States','Canada','Mexico','Cuba','Haiti'] },
+
+  { label:'Latin America',
+    feeds:[
+      { label:'BBC Latin America', url:'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
+      { label:'France 24',         url:'https://www.france24.com/en/rss' },
+    ],
+    c:['Brazil','Argentina','Colombia','Venezuela','Peru','Chile','Ecuador'] },
+
+  { label:'Europe',
+    feeds:[
+      { label:'BBC Europe',    url:'https://feeds.bbci.co.uk/news/world/europe/rss.xml' },
+      { label:'DW Europe',     url:'https://rss.dw.com/rdf/rss-en-europe' },
+      { label:'The Guardian',  url:'https://www.theguardian.com/world/europe-news/rss' },
+    ],
+    c:['France','Germany','Russia','Ukraine','Italy','Spain','Poland','Netherlands',
+       'Belgium','Sweden','Greece','Switzerland','Hungary','Romania','Serbia','Portugal','Finland','Austria','Kazakhstan'] },
+
+  { label:'Middle East',
+    feeds:[
+      { label:'BBC Middle East', url:'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
+      { label:'Al Jazeera',      url:'https://www.aljazeera.com/xml/rss/all.xml' },
+    ],
+    c:['Israel','Gaza','Lebanon','Yemen','Saudi Arabia','UAE','Qatar','Iraq','Syria','Iran','Turkey','Egypt'] },
+
+  { label:'Africa',
+    feeds:[
+      { label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
+      { label:'France 24',  url:'https://www.france24.com/en/rss' },
+    ],
+    c:['Nigeria','Ethiopia','Kenya','South Africa','Sudan','Somalia','Libya','Morocco','DR Congo'] },
+
+  { label:'South Asia',
+    feeds:[
+      { label:'BBC South Asia', url:'https://feeds.bbci.co.uk/news/world/south_asia/rss.xml' },
+      { label:'Al Jazeera',     url:'https://www.aljazeera.com/xml/rss/all.xml' },
+    ],
+    c:['India','Pakistan','Afghanistan','Bangladesh','Sri Lanka'] },
+
+  { label:'Asia-Pacific',
+    feeds:[
+      { label:'BBC Asia',  url:'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
+      { label:'DW Asia',   url:'https://rss.dw.com/rdf/rss-en-asia' },
+    ],
+    c:['China','Japan','South Korea','North Korea','Taiwan'] },
+
+  { label:'Australia/Pacific',
+    feeds:[
+      { label:'BBC Australia', url:'https://feeds.bbci.co.uk/news/world/australia/rss.xml' },
+      { label:'ABC Australia', url:'https://www.abc.net.au/news/feed/51120/rss.xml' },
+    ],
+    c:['Australia','New Zealand','Indonesia','Philippines','Thailand','Vietnam','Myanmar','Malaysia','Singapore'] },
+];
+// Build reverse lookup: country name → region
+const COUNTRY_REGION = {};
+for (const reg of REGIONS) for (const c of reg.c) COUNTRY_REGION[c] = reg;
+
+// ══════════════════════════════════════════════
+// VIEWPORT DETECTION
+// ══════════════════════════════════════════════
+// Major cities for city-level search at high zoom
+const CITIES = [
+  {n:'New York', lat:40.71, lng:-74.01, country:'United States'},
+  {n:'Los Angeles', lat:34.05, lng:-118.24, country:'United States'},
+  {n:'Chicago', lat:41.88, lng:-87.63, country:'United States'},
+  {n:'Washington DC', lat:38.91, lng:-77.04, country:'United States'},
+  {n:'San Francisco', lat:37.77, lng:-122.42, country:'United States'},
+  {n:'Houston', lat:29.76, lng:-95.37, country:'United States'},
+  {n:'Miami', lat:25.76, lng:-80.19, country:'United States'},
+  {n:'London', lat:51.51, lng:-0.13, country:'United Kingdom'},
+  {n:'Manchester', lat:53.48, lng:-2.24, country:'United Kingdom'},
+  {n:'Edinburgh', lat:55.95, lng:-3.19, country:'United Kingdom'},
+  {n:'Paris', lat:48.86, lng:2.35, country:'France'},
+  {n:'Berlin', lat:52.52, lng:13.41, country:'Germany'},
+  {n:'Munich', lat:48.14, lng:11.58, country:'Germany'},
+  {n:'Moscow', lat:55.76, lng:37.62, country:'Russia'},
+  {n:'Kyiv', lat:50.45, lng:30.52, country:'Ukraine'},
+  {n:'Beijing', lat:39.90, lng:116.40, country:'China'},
+  {n:'Shanghai', lat:31.23, lng:121.47, country:'China'},
+  {n:'Tokyo', lat:35.68, lng:139.69, country:'Japan'},
+  {n:'Osaka', lat:34.69, lng:135.50, country:'Japan'},
+  {n:'Seoul', lat:37.57, lng:126.98, country:'South Korea'},
+  {n:'Busan', lat:35.18, lng:129.08, country:'South Korea'},
+  {n:'Mumbai', lat:19.08, lng:72.88, country:'India'},
+  {n:'New Delhi', lat:28.61, lng:77.21, country:'India'},
+  {n:'Sydney', lat:-33.87, lng:151.21, country:'Australia'},
+  {n:'Melbourne', lat:-37.81, lng:144.96, country:'Australia'},
+  {n:'Toronto', lat:43.65, lng:-79.38, country:'Canada'},
+  {n:'São Paulo', lat:-23.55, lng:-46.63, country:'Brazil'},
+  {n:'Rio de Janeiro', lat:-22.91, lng:-43.17, country:'Brazil'},
+  {n:'Buenos Aires', lat:-34.60, lng:-58.38, country:'Argentina'},
+  {n:'Mexico City', lat:19.43, lng:-99.13, country:'Mexico'},
+  {n:'Cairo', lat:30.04, lng:31.24, country:'Egypt'},
+  {n:'Lagos', lat:6.52, lng:3.38, country:'Nigeria'},
+  {n:'Nairobi', lat:-1.29, lng:36.82, country:'Kenya'},
+  {n:'Johannesburg', lat:-26.20, lng:28.05, country:'South Africa'},
+  {n:'Dubai', lat:25.20, lng:55.27, country:'UAE'},
+  {n:'Istanbul', lat:41.01, lng:28.98, country:'Turkey'},
+  {n:'Bangkok', lat:13.76, lng:100.50, country:'Thailand'},
+  {n:'Singapore', lat:1.35, lng:103.82, country:'Singapore'},
+  {n:'Jakarta', lat:-6.21, lng:106.85, country:'Indonesia'},
+  {n:'Taipei', lat:25.03, lng:121.57, country:'Taiwan'},
+  {n:'Hong Kong', lat:22.32, lng:114.17, country:'China'},
+  {n:'Jerusalem', lat:31.77, lng:35.23, country:'Israel'},
+  {n:'Tel Aviv', lat:32.09, lng:34.78, country:'Israel'},
+  {n:'Baghdad', lat:33.31, lng:44.37, country:'Iraq'},
+  {n:'Kabul', lat:34.53, lng:69.17, country:'Afghanistan'},
+  {n:'Tehran', lat:35.69, lng:51.39, country:'Iran'},
+  {n:'Riyadh', lat:24.71, lng:46.68, country:'Saudi Arabia'},
+];
+
+function getViewportInfo() {
+  const zoom   = map.getZoom();
+  const bounds = map.getBounds();
+  const center = map.getCenter();
+
+  if (zoom < 4) return { key:'global', label:'World', regions:null, zoom };
+
+  // At very high zoom (>=9) → find nearest city
+  if (zoom >= 9) {
+    let bestCity = null, bestD = Infinity;
+    for (const c of CITIES) {
+      const d = Math.abs(c.lat - center.lat) + Math.abs(c.lng - center.lng);
+      if (d < bestD) { bestD = d; bestCity = c; }
+    }
+    if (bestCity && bestD < 2) {
+      const reg = COUNTRY_REGION[bestCity.country];
+      return { key: 'city:' + bestCity.n, label: bestCity.n, regions: reg ? [reg] : null, zoom, city: bestCity };
+    }
+  }
+
+  // Find PLACES centroids visible in current bounds
+  const inView = PLACES.filter(p => bounds.contains([p.lat, p.lng]));
+
+  // At high zoom or no centroids in bounds → use nearest country
+  if (inView.length === 0 || zoom >= 7) {
+    let best = null, bestD = Infinity;
+    for (const p of PLACES) {
+      const d = Math.abs(p.lat - center.lat) + Math.abs(p.lng - center.lng);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    if (best && COUNTRY_REGION[best.n]) {
+      const reg = COUNTRY_REGION[best.n];
+      return { key: best.n, label: best.n, regions: [reg], zoom };
+    }
+    return { key:'global', label:'World', regions:null, zoom };
+  }
+
+  // Collect unique regions for all visible countries
+  const seen = new Map();
+  const countryNames = [];
+  for (const p of inView) {
+    const reg = COUNTRY_REGION[p.n];
+    if (reg && !seen.has(reg.label)) seen.set(reg.label, reg);
+    countryNames.push(p.n);
+  }
+
+  if (seen.size === 0) return { key:'global', label:'World', regions:null, zoom };
+
+  const regs = [...seen.values()];
+  const label = countryNames.length <= 3
+    ? countryNames.slice(0, 3).join(' · ')
+    : regs.map(r => r.label).slice(0, 2).join(' · ') + (regs.length > 2 ? ` +${regs.length-2}` : '');
+  return { key: countryNames.join('|'), label, regions: regs, zoom };
+}
+
+// ══════════════════════════════════════════════
+// FETCH NEWS FOR CURRENT VIEWPORT
+// ══════════════════════════════════════════════
+function showSkeleton() {
+  document.getElementById('list-body').innerHTML =
+    Array(6).fill(0).map(()=>`
+      <div class="loading-row"><div style="flex:1">
+        <div class="skel" style="height:10px;width:50%;margin-bottom:7px"></div>
+        <div class="skel" style="height:13px;width:92%;margin-bottom:5px"></div>
+        <div class="skel" style="height:13px;width:74%;margin-bottom:8px"></div>
+        <div class="skel" style="height:9px;width:38%"></div>
+      </div></div>`).join('');
+  document.getElementById('list-cnt').textContent = '—';
+}
+
+async function loadByViewport(accumulate) {
+  if (isFetching) return;
+  isFetching = true;
+  const btn = document.getElementById('btn-rf');
+  btn.disabled = true;
+
+  const vp = getViewportInfo();
+  if (!accumulate) showSkeleton();
+  setStatus(`Loading: ${vp.label}…`);
+
+  try {
+    let feedsToFetch;
+    if (!vp.regions) {
+      feedsToFetch = FEEDS.slice(0, 8); // limit to avoid proxy rate-limiting
+    } else {
+      feedsToFetch = vp.regions.flatMap(r => r.feeds);
+    }
+    const all = await loadFeedsBatched(feedsToFetch, 2);
+    finishLoad([all], vp.label, accumulate);
+  } catch(e) {
+    console.warn('Viewport fetch failed:', e.message);
+    setStatus(`⚠ Could not load news for ${vp.label}.`);
+    if (!accumulate) document.getElementById('list-body').innerHTML = '<div class="empty">Fetch failed. Try refreshing.</div>';
+  }
+  isFetching = false;
+  btn.disabled = false;
+}
+
+// Auto-fetch on zoom/move — accumulate news, local first
+let _autoFetchTimer = null;
+let _lastAutoKey = '';
+let _suppressAutoFetch = false;
+map.on('moveend zoomend', () => {
+  clearTimeout(_autoFetchTimer);
+  _autoFetchTimer = setTimeout(() => {
+    if (_suppressAutoFetch) return;
+    const vp = getViewportInfo();
+    if (vp.key === _lastAutoKey) return; // same viewport, skip
+    _lastAutoKey = vp.key;
+    // Re-sort existing articles: in-view first
+    sortArticlesByViewport();
+    renderList();
+    // Auto-fetch new content
+    autoFetchForViewport();
+  }, 800);
+});
+
+function sortArticlesByViewport() {
+  const bounds = map.getBounds();
+  articles.sort((a, b) => {
+    const aIn = a.place && bounds.contains([a.place.lat, a.place.lng]);
+    const bIn = b.place && bounds.contains([b.place.lat, b.place.lng]);
+    if (aIn && !bIn) return -1;
+    if (!aIn && bIn) return 1;
+    if (a.isLocal && !b.isLocal) return -1;
+    if (!a.isLocal && b.isLocal) return 1;
+    return (b.date || '') > (a.date || '') ? 1 : -1;
+  });
+}
+
+async function autoFetchForViewport() {
+  if (isFetching) return;
+  const vp = getViewportInfo();
+  if (!vp.regions) {
+    loadByViewport(true);
+  } else {
+    isFetching = true;
+    const btn = document.getElementById('btn-rf');
+    btn.disabled = true;
+    try {
+      await fetchLocalNews(vp.label, vp);
+    } catch(e) {
+      console.warn('Auto-fetch local news failed, trying regional feeds:', e.message);
+      isFetching = false;
+      loadByViewport(true);
+    }
+    isFetching = false;
+    btn.disabled = false;
+  }
+}
+
+// ══════════════════════════════════════════════
+// LOAD ALL FEEDS  (global view / refresh)
+// ══════════════════════════════════════════════
+function finishLoad(groups, label, accumulate) {
+  const incoming = groups.flat();
+  // Build set of existing titles for dedup
+  const seen = new Set();
+  if (accumulate) {
+    for (const a of articles) seen.add(a.title.slice(0,60).toLowerCase());
+  }
+  const fresh = incoming.filter(a => {
+    const k = a.title.slice(0,60).toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k); return true;
+  });
+
+  if (accumulate) {
+    articles = [...articles, ...fresh];
+  } else {
+    articles = fresh;
+  }
+  // Sort: in-viewport first, then local, then by date
+  sortArticlesByViewport();
+
+  if (articles.length === 0) {
+    setStatus('⚠ No articles loaded.');
+    document.getElementById('list-body').innerHTML =
+      `<div class="empty">No stories found for <strong>${label}</strong>.</div>`;
+  } else {
+    const geo = articles.filter(a=>a.place).length;
+    setStatus(`${articles.length} stories · ${geo} pinned · ${label}`);
+    renderList();
+    renderAllPins();
+    renderLegend();
+  }
+}
+
+document.getElementById('btn-rf').addEventListener('click', async () => {
+  if (isFetching) return;
+  const vp = getViewportInfo();
+
+  if (!vp.regions) {
+    loadByViewport(true);
+  } else {
+    isFetching = true;
+    const btn = document.getElementById('btn-rf');
+    btn.disabled = true;
+    try {
+      await fetchLocalNews(vp.label, vp);
+    } catch(e) {
+      console.warn('Google News failed, falling back to regional feeds:', e.message);
+      isFetching = false;
+      loadByViewport(true);
+    }
+    isFetching = false;
+    btn.disabled = false;
+  }
+});
+
+// Initial load — load feeds config, check Ollama, then fetch news
+// Suppress auto-fetch during initial load to avoid doubling proxy requests
+(async () => {
+  _suppressAutoFetch = true;
+  await loadFeedsYaml();
+  checkOllama();
+  await loadByViewport(false);
+  _suppressAutoFetch = false;
+  _lastAutoKey = getViewportInfo().key;
+})();
+</script>
+</body>
+</html>

@@ -1,0 +1,98 @@
+# ═══════════════════════════════════════════════════════
+# GLOBAL PULSE — Feed Configuration
+# ═══════════════════════════════════════════════════════
+# Add or remove RSS feeds below. The app loads this file
+# on startup. Each feed needs a label and url.
+#
+# Categories: global, tech, business, science, health, regional
+# ═══════════════════════════════════════════════════════
+
+global:
+  - label: BBC World
+    url: https://feeds.bbci.co.uk/news/world/rss.xml
+  - label: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+  - label: DW News
+    url: https://rss.dw.com/rdf/rss-en-world
+  - label: NPR World
+    url: https://feeds.npr.org/1004/rss.xml
+  - label: The Guardian
+    url: https://www.theguardian.com/world/rss
+  - label: France 24
+    url: https://www.france24.com/en/rss
+  - label: Reuters
+    url: https://feeds.reuters.com/reuters/worldNews
+  - label: CBC News
+    url: https://www.cbc.ca/cmlink/rss-world
+  - label: NY Times World
+    url: https://rss.nytimes.com/services/xml/rss/nyt/World.xml
+  - label: Washington Post
+    url: https://feeds.washingtonpost.com/rss/world
+  - label: Sky News
+    url: https://feeds.skynews.com/feeds/rss/world.xml
+  - label: The Independent
+    url: https://www.independent.co.uk/news/world/rss
+  - label: Euronews
+    url: https://www.euronews.com/rss?level=theme&name=news
+
+tech:
+  - label: BBC Tech
+    url: https://feeds.bbci.co.uk/news/technology/rss.xml
+  - label: NY Times Tech
+    url: https://rss.nytimes.com/services/xml/rss/nyt/Technology.xml
+  - label: Ars Technica
+    url: https://feeds.arstechnica.com/arstechnica/index
+  - label: TechCrunch
+    url: https://feeds.feedburner.com/TechCrunch/
+  - label: The Verge
+    url: https://www.theverge.com/rss/index.xml
+  - label: Wired
+    url: https://www.wired.com/feed/rss
+  - label: NPR Tech
+    url: https://feeds.npr.org/1019/rss.xml
+
+business:
+  - label: BBC Business
+    url: https://feeds.bbci.co.uk/news/business/rss.xml
+  - label: NY Times Business
+    url: https://rss.nytimes.com/services/xml/rss/nyt/Business.xml
+  - label: Guardian Business
+    url: https://www.theguardian.com/uk/business/rss
+  - label: DW Business
+    url: https://rss.dw.com/rdf/rss-en-bus
+
+science:
+  - label: BBC Science
+    url: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
+  - label: NY Times Science
+    url: https://rss.nytimes.com/services/xml/rss/nyt/Science.xml
+  - label: Guardian Science
+    url: https://www.theguardian.com/science/rss
+  - label: Nature
+    url: https://www.nature.com/nature.rss
+  - label: NY Times Climate
+    url: https://rss.nytimes.com/services/xml/rss/nyt/Climate.xml
+  - label: Guardian Environment
+    url: https://www.theguardian.com/environment/rss
+
+health:
+  - label: BBC Health
+    url: https://feeds.bbci.co.uk/news/health/rss.xml
+  - label: NY Times Health
+    url: https://rss.nytimes.com/services/xml/rss/nyt/Health.xml
+
+regional:
+  - label: NHK World
+    url: https://www3.nhk.or.jp/rss/news/cat0.xml
+  - label: Japan Times
+    url: https://www.japantimes.co.jp/feed/
+  - label: Times of India
+    url: https://timesofindia.indiatimes.com/rssfeeds/296589292.cms
+  - label: The Hindu
+    url: https://www.thehindu.com/news/international/feeder/default.rss
+  - label: ABC Australia
+    url: https://www.abc.net.au/news/feed/51120/rss.xml
+  - label: DW Asia
+    url: https://rss.dw.com/rdf/rss-en-asia
+  - label: DW Europe
+    url: https://rss.dw.com/rdf/rss-en-eu
