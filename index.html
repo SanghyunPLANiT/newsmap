@@ -224,6 +224,11 @@ const PLACES = [
   {n:'Portugal',       lat:38.7,  lng:-9.1,  c:'#c0392b', k:['Portugal','Portuguese','Lisbon']},
   {n:'Finland',        lat:60.2,  lng:24.9,  c:'#3498db', k:['Finland','Finnish','Helsinki']},
   {n:'Austria',        lat:48.2,  lng:16.4,  c:'#c0392b', k:['Austria','Austrian','Vienna']},
+  {n:'Denmark',        lat:55.7,  lng:12.6,  c:'#c0392b', k:['Denmark','Danish','Copenhagen']},
+  {n:'Norway',         lat:59.9,  lng:10.7,  c:'#3498db', k:['Norway','Norwegian','Oslo']},
+  {n:'Ireland',        lat:53.3,  lng:-6.3,  c:'#27ae60', k:['Ireland','Irish','Dublin']},
+  {n:'Czech Republic', lat:50.1,  lng:14.4,  c:'#c0392b', k:['Czech','Prague','Czechia']},
+  {n:'Ecuador',        lat:-0.2,  lng:-78.5,  c:'#f39c12', k:['Ecuador','Quito']},
 ];
 
 // City-level keyword geocoding (checked BEFORE country-level for precision)
@@ -456,10 +461,21 @@ function parseRSS(xmlText, label) {
   return items;
 }
 
+// Global abort controller — cancelled when viewport changes
+let _fetchAbort = new AbortController();
+function cancelAllFetches() {
+  _fetchAbort.abort();
+  _fetchAbort = new AbortController();
+  isFetching = false;
+  document.getElementById('btn-rf').disabled = false;
+}
+
 async function proxyFetch(url) {
+  if (!url) throw new Error('No URL provided');
   for (let i = 0; i < 3; i++) {
     try {
-      const r = await fetch(PROXY + encodeURIComponent(url), { signal: AbortSignal.timeout(12000) });
+      const sig = AbortSignal.any ? AbortSignal.any([_fetchAbort.signal, AbortSignal.timeout(12000)]) : _fetchAbort.signal;
+      const r = await fetch(PROXY + encodeURIComponent(url), { signal: sig });
       if (r.ok) return r.text();
       // Retry on rate-limit / server errors
       if (i < 2 && (r.status === 403 || r.status === 429 || r.status >= 500)) {
@@ -473,6 +489,15 @@ async function proxyFetch(url) {
     }
   }
   throw new Error('proxy failed after retries');
+}
+
+// Local proxy for Google News (avoids CORS proxy rate limits)
+const LOCAL_PROXY = 'http://localhost:8081/proxy?url=';
+async function localProxyFetch(url) {
+  const sig = AbortSignal.any ? AbortSignal.any([_fetchAbort.signal, AbortSignal.timeout(15000)]) : _fetchAbort.signal;
+  const r = await fetch(LOCAL_PROXY + encodeURIComponent(url), { signal: sig });
+  if (!r.ok) throw new Error('HTTP ' + r.status);
+  return r.text();
 }
 
 // Fetch feeds in batches to avoid rate-limiting the proxy
@@ -613,33 +638,67 @@ function distKm(lat1, lng1, lat2, lng2) {
 
 // Max distance (km) for an article to be considered "local" at given zoom
 function maxDistForZoom(zoom) {
-  if (zoom >= 12) return 30;
-  if (zoom >= 10) return 80;
-  if (zoom >= 9)  return 150;
-  if (zoom >= 7)  return 500;
-  if (zoom >= 5)  return 2000;
+  if (zoom >= 12) return 100;
+  if (zoom >= 10) return 300;
+  if (zoom >= 8)  return 800;
+  if (zoom >= 6)  return 2000;
+  if (zoom >= 4)  return 5000;
   return 20000; // global
 }
 
 // Fetch Google News for a specific query and geocode each article
 async function fetchLocalNews(queryLabel, vp) {
-  const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(queryLabel + ' news')}&hl=en-US&gl=US&ceid=US:en`;
-  const xml = await proxyFetch(rssUrl);
-  const items = parseRSS(xml, queryLabel);
-
-  // Deduplicate against existing articles
+  // Build search queries: city-level queries when zoomed in, country-level otherwise
+  const queries = [];
   const existing = new Set(articles.map(a => a.title.slice(0, 60).toLowerCase()));
-  const fresh = items.filter(a => !existing.has(a.title.slice(0, 60).toLowerCase()));
+
+  // At city zoom level, search by city names first
+  if (vp?.cities?.length > 0 && vp.scope?.level === 'city') {
+    for (const c of vp.cities.slice(0, 3)) {
+      if (c.city) queries.push({ q: c.city, label: c.city });
+    }
+  }
+  // Also add country-level queries
+  const countries = vp?.countries || [queryLabel];
+  for (const country of countries.slice(0, 5)) {
+    if (!queries.find(q => q.q === country)) {
+      queries.push({ q: country + ' news', label: country });
+    }
+  }
+
+  const allFresh = [];
+  const queryList = queries.slice(0, 4); // max 4 queries
+  for (let qi = 0; qi < queryList.length; qi++) {
+    const { q, label } = queryList[qi];
+    if (qi > 0) await new Promise(r => setTimeout(r, 2000)); // 2s pause between queries
+    try {
+      setStatus(`Fetching news: ${label}…`);
+      const rssUrl = `https://news.google.com/rss/search?q=${encodeURIComponent(q)}&hl=en-US&gl=US&ceid=US:en`;
+      const xml = await localProxyFetch(rssUrl);
+      const items = parseRSS(xml, label);
+      for (const a of items) {
+        const key = a.title.slice(0, 60).toLowerCase();
+        if (!existing.has(key)) {
+          existing.add(key);
+          a._queryCountry = label;
+          allFresh.push(a);
+        }
+      }
+    } catch(e) {
+      console.warn(`Failed to fetch news for ${label}:`, e.message);
+    }
+  }
 
   const btn = document.getElementById('btn-rf');
   const center = map.getCenter();
   const zoom = vp?.zoom || map.getZoom();
   const maxDist = maxDistForZoom(zoom);
   let added = 0;
+  const total = Math.min(allFresh.length, 30);
 
-  for (let i = 0; i < Math.min(fresh.length, 25); i++) {
-    const a = fresh[i];
-    setStatus(`Geocoding ${i + 1}/${Math.min(fresh.length, 25)}: ${queryLabel}…`);
+  for (let i = 0; i < total; i++) {
+    const a = allFresh[i];
+    setStatus(`Geocoding ${i + 1}/${total}: ${a._queryCountry || queryLabel}…`);
 
     // Try Ollama first, then keyword fallback
     if (!a.place && ollamaModel) {
@@ -664,7 +723,8 @@ async function fetchLocalNews(queryLabel, vp) {
   }
 
   const geo = articles.filter(a => a.place).length;
-  setStatus(`${articles.length} stories · ${geo} pinned · +${added} from ${queryLabel}`);
+  const countryStr = countries.slice(0, 3).join(', ');
+  setStatus(`${articles.length} stories · ${geo} pinned · +${added} from ${countryStr}`);
   renderLegend();
   btn.disabled = false;
 }
@@ -986,187 +1046,226 @@ document.getElementById('search').addEventListener('input', function() {
 });
 
 // ══════════════════════════════════════════════
-// REGIONAL RSS FEEDS  (BBC editorial regions)
+// UN-STYLE REGION HIERARCHY
 // ══════════════════════════════════════════════
-// Each region has multiple feeds for richer coverage
-const REGIONS = [
-  { label:'UK',
-    feeds:[
-      { label:'BBC UK',      url:'https://feeds.bbci.co.uk/news/uk/rss.xml' },
-      { label:'Guardian UK', url:'https://www.theguardian.com/uk-news/rss' },
-    ],
-    c:['United Kingdom'] },
+// Country → Sub-region → Region (continent) → Macro-region
+// Based on UN M49 geoscheme, adapted for news coverage
 
-  { label:'US & Canada',
-    feeds:[
-      { label:'BBC US/Canada', url:'https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml' },
-      { label:'NPR News',      url:'https://feeds.npr.org/1004/rss.xml' },
-      { label:'CBC World',     url:'https://www.cbc.ca/cmlink/rss-world' },
-    ],
-    c:['United States','Canada','Mexico','Cuba','Haiti'] },
+const GEO_HIERARCHY = {
+  // Sub-regions with their countries and editorial RSS feeds
+  'Northern Europe':    { region:'Europe', countries:['United Kingdom','Sweden','Finland','Denmark','Norway','Ireland'], feeds:[
+    {label:'BBC UK', url:'https://feeds.bbci.co.uk/news/uk/rss.xml'}, {label:'Guardian UK', url:'https://www.theguardian.com/uk-news/rss'}] },
+  'Western Europe':     { region:'Europe', countries:['France','Germany','Netherlands','Belgium','Switzerland','Austria'], feeds:[
+    {label:'BBC Europe', url:'https://feeds.bbci.co.uk/news/world/europe/rss.xml'}, {label:'DW Europe', url:'https://rss.dw.com/rdf/rss-en-europe'}, {label:'Guardian Europe', url:'https://www.theguardian.com/world/europe-news/rss'}] },
+  'Southern Europe':    { region:'Europe', countries:['Italy','Spain','Greece','Portugal','Serbia'], feeds:[
+    {label:'BBC Europe', url:'https://feeds.bbci.co.uk/news/world/europe/rss.xml'}] },
+  'Eastern Europe':     { region:'Europe', countries:['Russia','Ukraine','Poland','Hungary','Romania','Kazakhstan','Czech Republic'], feeds:[
+    {label:'BBC Europe', url:'https://feeds.bbci.co.uk/news/world/europe/rss.xml'}, {label:'DW Europe', url:'https://rss.dw.com/rdf/rss-en-europe'}] },
 
-  { label:'Latin America',
-    feeds:[
-      { label:'BBC Latin America', url:'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml' },
-      { label:'France 24',         url:'https://www.france24.com/en/rss' },
-    ],
-    c:['Brazil','Argentina','Colombia','Venezuela','Peru','Chile','Ecuador'] },
+  'Northern America':   { region:'Americas', countries:['United States','Canada'], feeds:[
+    {label:'BBC US/Canada', url:'https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml'}, {label:'NPR News', url:'https://feeds.npr.org/1004/rss.xml'}, {label:'CBC World', url:'https://www.cbc.ca/cmlink/rss-world'}] },
+  'Central America':    { region:'Americas', countries:['Mexico','Cuba','Haiti'], feeds:[
+    {label:'BBC Latin America', url:'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml'}] },
+  'South America':      { region:'Americas', countries:['Brazil','Argentina','Colombia','Venezuela','Peru','Chile','Ecuador'], feeds:[
+    {label:'BBC Latin America', url:'https://feeds.bbci.co.uk/news/world/latin_america/rss.xml'}] },
 
-  { label:'Europe',
-    feeds:[
-      { label:'BBC Europe',    url:'https://feeds.bbci.co.uk/news/world/europe/rss.xml' },
-      { label:'DW Europe',     url:'https://rss.dw.com/rdf/rss-en-europe' },
-      { label:'The Guardian',  url:'https://www.theguardian.com/world/europe-news/rss' },
-    ],
-    c:['France','Germany','Russia','Ukraine','Italy','Spain','Poland','Netherlands',
-       'Belgium','Sweden','Greece','Switzerland','Hungary','Romania','Serbia','Portugal','Finland','Austria','Kazakhstan'] },
+  'Middle East':        { region:'Middle East & North Africa', countries:['Israel','Gaza','Lebanon','Yemen','Saudi Arabia','UAE','Qatar','Iraq','Syria','Iran','Turkey'], feeds:[
+    {label:'BBC Middle East', url:'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml'}, {label:'Al Jazeera', url:'https://www.aljazeera.com/xml/rss/all.xml'}] },
+  'North Africa':       { region:'Middle East & North Africa', countries:['Egypt','Libya','Morocco'], feeds:[
+    {label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml'}] },
 
-  { label:'Middle East',
-    feeds:[
-      { label:'BBC Middle East', url:'https://feeds.bbci.co.uk/news/world/middle_east/rss.xml' },
-      { label:'Al Jazeera',      url:'https://www.aljazeera.com/xml/rss/all.xml' },
-    ],
-    c:['Israel','Gaza','Lebanon','Yemen','Saudi Arabia','UAE','Qatar','Iraq','Syria','Iran','Turkey','Egypt'] },
+  'West Africa':        { region:'Sub-Saharan Africa', countries:['Nigeria'], feeds:[
+    {label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml'}] },
+  'East Africa':        { region:'Sub-Saharan Africa', countries:['Ethiopia','Kenya','Somalia','Sudan'], feeds:[
+    {label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml'}] },
+  'Southern Africa':    { region:'Sub-Saharan Africa', countries:['South Africa','DR Congo'], feeds:[
+    {label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml'}] },
 
-  { label:'Africa',
-    feeds:[
-      { label:'BBC Africa', url:'https://feeds.bbci.co.uk/news/world/africa/rss.xml' },
-      { label:'France 24',  url:'https://www.france24.com/en/rss' },
-    ],
-    c:['Nigeria','Ethiopia','Kenya','South Africa','Sudan','Somalia','Libya','Morocco','DR Congo'] },
+  'South Asia':         { region:'Asia', countries:['India','Pakistan','Afghanistan','Bangladesh','Sri Lanka'], feeds:[
+    {label:'BBC South Asia', url:'https://feeds.bbci.co.uk/news/world/south_asia/rss.xml'}] },
+  'East Asia':          { region:'Asia', countries:['China','Japan','South Korea','North Korea','Taiwan'], feeds:[
+    {label:'BBC Asia', url:'https://feeds.bbci.co.uk/news/world/asia/rss.xml'}, {label:'DW Asia', url:'https://rss.dw.com/rdf/rss-en-asia'}] },
+  'Southeast Asia':     { region:'Asia', countries:['Indonesia','Philippines','Thailand','Vietnam','Myanmar','Malaysia','Singapore'], feeds:[
+    {label:'BBC Asia', url:'https://feeds.bbci.co.uk/news/world/asia/rss.xml'}] },
 
-  { label:'South Asia',
-    feeds:[
-      { label:'BBC South Asia', url:'https://feeds.bbci.co.uk/news/world/south_asia/rss.xml' },
-      { label:'Al Jazeera',     url:'https://www.aljazeera.com/xml/rss/all.xml' },
-    ],
-    c:['India','Pakistan','Afghanistan','Bangladesh','Sri Lanka'] },
+  'Oceania':            { region:'Oceania', countries:['Australia','New Zealand'], feeds:[
+    {label:'BBC Australia', url:'https://feeds.bbci.co.uk/news/world/australia/rss.xml'}, {label:'ABC Australia', url:'https://www.abc.net.au/news/feed/51120/rss.xml'}] },
+};
 
-  { label:'Asia-Pacific',
-    feeds:[
-      { label:'BBC Asia',  url:'https://feeds.bbci.co.uk/news/world/asia/rss.xml' },
-      { label:'DW Asia',   url:'https://rss.dw.com/rdf/rss-en-asia' },
-    ],
-    c:['China','Japan','South Korea','North Korea','Taiwan'] },
+// Build reverse lookups
+const COUNTRY_TO_SUBREGION = {};
+const COUNTRY_TO_REGION = {};
+for (const [subregion, info] of Object.entries(GEO_HIERARCHY)) {
+  for (const c of info.countries) {
+    COUNTRY_TO_SUBREGION[c] = subregion;
+    COUNTRY_TO_REGION[c] = info.region;
+  }
+}
 
-  { label:'Australia/Pacific',
-    feeds:[
-      { label:'BBC Australia', url:'https://feeds.bbci.co.uk/news/world/australia/rss.xml' },
-      { label:'ABC Australia', url:'https://www.abc.net.au/news/feed/51120/rss.xml' },
-    ],
-    c:['Australia','New Zealand','Indonesia','Philippines','Thailand','Vietnam','Myanmar','Malaysia','Singapore'] },
-];
-// Build reverse lookup: country name → region
-const COUNTRY_REGION = {};
-for (const reg of REGIONS) for (const c of reg.c) COUNTRY_REGION[c] = reg;
+// Get feeds for a sub-region
+function feedsForSubregion(sub) { return GEO_HIERARCHY[sub]?.feeds || []; }
+
+// Get feeds for a region (all sub-regions combined, deduped by URL)
+function feedsForRegion(region) {
+  const seen = new Set();
+  const feeds = [];
+  for (const info of Object.values(GEO_HIERARCHY)) {
+    if (info.region === region) {
+      for (const f of info.feeds) {
+        if (!seen.has(f.url)) { seen.add(f.url); feeds.push(f); }
+      }
+    }
+  }
+  return feeds;
+}
+
+// Determine the right query scope based on visible countries
+// ≤3 countries → country-level queries (Google News per country)
+// >3 countries but ≤2 sub-regions → sub-region feeds
+// >2 sub-regions but ≤2 regions → region feeds
+// >2 regions → global feeds
+function determineScope(countryNames) {
+  if (countryNames.length <= 3) {
+    return { level: 'country', label: countryNames.join(' · '), countries: countryNames, feeds: null };
+  }
+
+  // Count unique sub-regions
+  const subregions = [...new Set(countryNames.map(c => COUNTRY_TO_SUBREGION[c]).filter(Boolean))];
+  if (subregions.length <= 2) {
+    const feeds = subregions.flatMap(s => feedsForSubregion(s));
+    const deduped = []; const seen = new Set();
+    for (const f of feeds) { if (!seen.has(f.url)) { seen.add(f.url); deduped.push(f); } }
+    return { level: 'subregion', label: subregions.join(' · '), countries: countryNames, feeds: deduped };
+  }
+
+  // Count unique regions
+  const regions = [...new Set(countryNames.map(c => COUNTRY_TO_REGION[c]).filter(Boolean))];
+  if (regions.length <= 2) {
+    const feeds = regions.flatMap(r => feedsForRegion(r));
+    const deduped = []; const seen = new Set();
+    for (const f of feeds) { if (!seen.has(f.url)) { seen.add(f.url); deduped.push(f); } }
+    return { level: 'region', label: regions.join(' & '), countries: countryNames, feeds: deduped };
+  }
+
+  return { level: 'global', label: 'World', countries: countryNames, feeds: null };
+}
 
 // ══════════════════════════════════════════════
 // VIEWPORT DETECTION
 // ══════════════════════════════════════════════
 // Major cities for city-level search at high zoom
-const CITIES = [
-  {n:'New York', lat:40.71, lng:-74.01, country:'United States'},
-  {n:'Los Angeles', lat:34.05, lng:-118.24, country:'United States'},
-  {n:'Chicago', lat:41.88, lng:-87.63, country:'United States'},
-  {n:'Washington DC', lat:38.91, lng:-77.04, country:'United States'},
-  {n:'San Francisco', lat:37.77, lng:-122.42, country:'United States'},
-  {n:'Houston', lat:29.76, lng:-95.37, country:'United States'},
-  {n:'Miami', lat:25.76, lng:-80.19, country:'United States'},
-  {n:'London', lat:51.51, lng:-0.13, country:'United Kingdom'},
-  {n:'Manchester', lat:53.48, lng:-2.24, country:'United Kingdom'},
-  {n:'Edinburgh', lat:55.95, lng:-3.19, country:'United Kingdom'},
-  {n:'Paris', lat:48.86, lng:2.35, country:'France'},
-  {n:'Berlin', lat:52.52, lng:13.41, country:'Germany'},
-  {n:'Munich', lat:48.14, lng:11.58, country:'Germany'},
-  {n:'Moscow', lat:55.76, lng:37.62, country:'Russia'},
-  {n:'Kyiv', lat:50.45, lng:30.52, country:'Ukraine'},
-  {n:'Beijing', lat:39.90, lng:116.40, country:'China'},
-  {n:'Shanghai', lat:31.23, lng:121.47, country:'China'},
-  {n:'Tokyo', lat:35.68, lng:139.69, country:'Japan'},
-  {n:'Osaka', lat:34.69, lng:135.50, country:'Japan'},
-  {n:'Seoul', lat:37.57, lng:126.98, country:'South Korea'},
-  {n:'Busan', lat:35.18, lng:129.08, country:'South Korea'},
-  {n:'Mumbai', lat:19.08, lng:72.88, country:'India'},
-  {n:'New Delhi', lat:28.61, lng:77.21, country:'India'},
-  {n:'Sydney', lat:-33.87, lng:151.21, country:'Australia'},
-  {n:'Melbourne', lat:-37.81, lng:144.96, country:'Australia'},
-  {n:'Toronto', lat:43.65, lng:-79.38, country:'Canada'},
-  {n:'São Paulo', lat:-23.55, lng:-46.63, country:'Brazil'},
-  {n:'Rio de Janeiro', lat:-22.91, lng:-43.17, country:'Brazil'},
-  {n:'Buenos Aires', lat:-34.60, lng:-58.38, country:'Argentina'},
-  {n:'Mexico City', lat:19.43, lng:-99.13, country:'Mexico'},
-  {n:'Cairo', lat:30.04, lng:31.24, country:'Egypt'},
-  {n:'Lagos', lat:6.52, lng:3.38, country:'Nigeria'},
-  {n:'Nairobi', lat:-1.29, lng:36.82, country:'Kenya'},
-  {n:'Johannesburg', lat:-26.20, lng:28.05, country:'South Africa'},
-  {n:'Dubai', lat:25.20, lng:55.27, country:'UAE'},
-  {n:'Istanbul', lat:41.01, lng:28.98, country:'Turkey'},
-  {n:'Bangkok', lat:13.76, lng:100.50, country:'Thailand'},
-  {n:'Singapore', lat:1.35, lng:103.82, country:'Singapore'},
-  {n:'Jakarta', lat:-6.21, lng:106.85, country:'Indonesia'},
-  {n:'Taipei', lat:25.03, lng:121.57, country:'Taiwan'},
-  {n:'Hong Kong', lat:22.32, lng:114.17, country:'China'},
-  {n:'Jerusalem', lat:31.77, lng:35.23, country:'Israel'},
-  {n:'Tel Aviv', lat:32.09, lng:34.78, country:'Israel'},
-  {n:'Baghdad', lat:33.31, lng:44.37, country:'Iraq'},
-  {n:'Kabul', lat:34.53, lng:69.17, country:'Afghanistan'},
-  {n:'Tehran', lat:35.69, lng:51.39, country:'Iran'},
-  {n:'Riyadh', lat:24.71, lng:46.68, country:'Saudi Arabia'},
-];
+// Dynamic city lookup via OpenStreetMap Nominatim (free, no API key)
+const _nominatimCache = {};
+async function reverseGeocode(lat, lng) {
+  const key = `${lat.toFixed(2)},${lng.toFixed(2)}`;
+  if (_nominatimCache[key]) return _nominatimCache[key];
+  try {
+    const url = `https://nominatim.openstreetmap.org/reverse?lat=${lat}&lon=${lng}&format=json&zoom=10&accept-language=en`;
+    const r = await fetch(PROXY + encodeURIComponent(url), { signal: AbortSignal.timeout(8000) });
+    if (!r.ok) return null;
+    const d = await r.json();
+    const addr = d.address || {};
+    const city = addr.city || addr.town || addr.village || addr.municipality || addr.county || addr.state || '';
+    const country = addr.country || '';
+    if (!city && !country) return null;
+    const result = { city, country, lat: parseFloat(d.lat), lng: parseFloat(d.lon) };
+    _nominatimCache[key] = result;
+    return result;
+  } catch(e) { return null; }
+}
 
-function getViewportInfo() {
+// Get city/region name for map center — used for news queries
+async function getLocationLabel(lat, lng, zoom) {
+  const geo = await reverseGeocode(lat, lng);
+  if (!geo) {
+    // Fallback: find nearest PLACES entry
+    let best = null, bestD = Infinity;
+    for (const p of PLACES) {
+      const d = Math.abs(p.lat - lat) + Math.abs(p.lng - lng);
+      if (d < bestD) { bestD = d; best = p; }
+    }
+    return best ? { city: '', country: best.n } : null;
+  }
+  return geo;
+}
+
+async function getViewportInfo() {
   const zoom   = map.getZoom();
   const bounds = map.getBounds();
   const center = map.getCenter();
 
-  if (zoom < 4) return { key:'global', label:'World', regions:null, zoom };
+  if (zoom < 4) return { key:'global', label:'World', scope: { level:'global', label:'World', feeds:null, countries:[] }, zoom };
 
-  // At very high zoom (>=9) → find nearest city
-  if (zoom >= 9) {
-    let bestCity = null, bestD = Infinity;
-    for (const c of CITIES) {
-      const d = Math.abs(c.lat - center.lat) + Math.abs(c.lng - center.lng);
-      if (d < bestD) { bestD = d; bestCity = c; }
+  // At high zoom (>=8) → use Nominatim to find city/cities in viewport
+  if (zoom >= 8) {
+    // Sample multiple points: center + 4 quadrants of the viewport
+    const ne = bounds.getNorthEast(), sw = bounds.getSouthWest();
+    const midLat = (ne.lat + sw.lat) / 2, midLng = (ne.lng + sw.lng) / 2;
+    const qLat = (ne.lat - sw.lat) / 4, qLng = (ne.lng - sw.lng) / 4;
+    const samplePoints = [
+      [center.lat, center.lng],
+      [midLat + qLat, midLng - qLng],  // NW quadrant
+      [midLat + qLat, midLng + qLng],  // NE quadrant
+      [midLat - qLat, midLng - qLng],  // SW quadrant
+      [midLat - qLat, midLng + qLng],  // SE quadrant
+    ];
+
+    // Nominatim rate limit: 1 req/sec. Fetch center first, then others in parallel
+    const results = await Promise.all(samplePoints.map(([lat,lng]) => reverseGeocode(lat, lng)));
+    const cities = [], countries = new Set();
+    for (const r of results) {
+      if (!r) continue;
+      countries.add(r.country);
+      if (r.city && !cities.find(c => c.city === r.city)) {
+        cities.push(r);
+      }
     }
-    if (bestCity && bestD < 2) {
-      const reg = COUNTRY_REGION[bestCity.country];
-      return { key: 'city:' + bestCity.n, label: bestCity.n, regions: reg ? [reg] : null, zoom, city: bestCity };
+
+    if (cities.length > 0 || countries.size > 0) {
+      const countryNames = [...countries].filter(Boolean);
+      const scope = determineScope(countryNames);
+
+      // At very high zoom (>=10), use city names as search queries
+      if (zoom >= 10 && cities.length > 0) {
+        const cityLabel = cities.map(c => c.city).filter(Boolean).slice(0, 3).join(', ');
+        return {
+          key: 'city:' + cityLabel,
+          label: cityLabel || countryNames[0] || 'Local',
+          scope: { level: 'city', label: cityLabel, countries: countryNames, feeds: null },
+          zoom, cities, countries: countryNames
+        };
+      }
+
+      return {
+        key: countryNames.join('|'),
+        label: scope.label,
+        scope, zoom, countries: countryNames, cities
+      };
     }
   }
 
   // Find PLACES centroids visible in current bounds
   const inView = PLACES.filter(p => bounds.contains([p.lat, p.lng]));
 
-  // At high zoom or no centroids in bounds → use nearest country
-  if (inView.length === 0 || zoom >= 7) {
-    let best = null, bestD = Infinity;
-    for (const p of PLACES) {
+  // At high zoom or no centroids directly in bounds → expand search to nearby countries
+  let candidates = inView;
+  if (candidates.length === 0) {
+    const maxDeg = Math.max(3, 180 / Math.pow(2, zoom - 2));
+    candidates = PLACES.filter(p => {
       const d = Math.abs(p.lat - center.lat) + Math.abs(p.lng - center.lng);
-      if (d < bestD) { bestD = d; best = p; }
+      return d < maxDeg;
+    });
+    if (candidates.length === 0) {
+      candidates = PLACES.map(p => ({...p, _d: Math.abs(p.lat - center.lat) + Math.abs(p.lng - center.lng)}))
+        .sort((a,b) => a._d - b._d).slice(0, 3);
     }
-    if (best && COUNTRY_REGION[best.n]) {
-      const reg = COUNTRY_REGION[best.n];
-      return { key: best.n, label: best.n, regions: [reg], zoom };
-    }
-    return { key:'global', label:'World', regions:null, zoom };
   }
 
-  // Collect unique regions for all visible countries
-  const seen = new Map();
-  const countryNames = [];
-  for (const p of inView) {
-    const reg = COUNTRY_REGION[p.n];
-    if (reg && !seen.has(reg.label)) seen.set(reg.label, reg);
-    countryNames.push(p.n);
-  }
+  const countryNames = [...new Set(candidates.map(p => p.n))];
+  if (countryNames.length === 0) return { key:'global', label:'World', scope: { level:'global', label:'World', feeds:null, countries:[] }, zoom };
 
-  if (seen.size === 0) return { key:'global', label:'World', regions:null, zoom };
-
-  const regs = [...seen.values()];
-  const label = countryNames.length <= 3
-    ? countryNames.slice(0, 3).join(' · ')
-    : regs.map(r => r.label).slice(0, 2).join(' · ') + (regs.length > 2 ? ` +${regs.length-2}` : '');
-  return { key: countryNames.join('|'), label, regions: regs, zoom };
+  const scope = determineScope(countryNames);
+  return { key: countryNames.join('|'), label: scope.label, scope, zoom, countries: countryNames };
 }
 
 // ══════════════════════════════════════════════
@@ -1190,22 +1289,29 @@ async function loadByViewport(accumulate) {
   const btn = document.getElementById('btn-rf');
   btn.disabled = true;
 
-  const vp = getViewportInfo();
+  const vp = await getViewportInfo();
   if (!accumulate) showSkeleton();
   setStatus(`Loading: ${vp.label}…`);
 
   try {
-    let feedsToFetch;
-    if (!vp.regions) {
-      feedsToFetch = FEEDS.slice(0, 8); // limit to avoid proxy rate-limiting
+    const scope = vp.scope;
+    if (scope.level === 'country' || scope.level === 'city') {
+      // Country/city-level: use Google News per country/city + Ollama geocoding
+      await fetchLocalNews(vp.label, vp);
+    } else if (scope.feeds && scope.feeds.length > 0) {
+      // Sub-region or region level: use editorial RSS feeds
+      const all = await loadFeedsBatched(scope.feeds, 2);
+      finishLoad([all], vp.label, accumulate);
     } else {
-      feedsToFetch = vp.regions.flatMap(r => r.feeds);
+      // Global
+      const feedsToFetch = FEEDS.slice(0, 8);
+      const all = await loadFeedsBatched(feedsToFetch, 2);
+      finishLoad([all], vp.label, accumulate);
     }
-    const all = await loadFeedsBatched(feedsToFetch, 2);
-    finishLoad([all], vp.label, accumulate);
   } catch(e) {
+    if (e.name === 'AbortError') { console.log('Fetch cancelled (viewport changed)'); return; }
     console.warn('Viewport fetch failed:', e.message);
-    setStatus(`⚠ Could not load news for ${vp.label}.`);
+    setStatus(`Could not load news for ${vp.label}.`);
     if (!accumulate) document.getElementById('list-body').innerHTML = '<div class="empty">Fetch failed. Try refreshing.</div>';
   }
   isFetching = false;
@@ -1218,9 +1324,11 @@ let _lastAutoKey = '';
 let _suppressAutoFetch = false;
 map.on('moveend zoomend', () => {
   clearTimeout(_autoFetchTimer);
-  _autoFetchTimer = setTimeout(() => {
+  // Cancel any in-flight fetches from the previous viewport
+  if (isFetching) cancelAllFetches();
+  _autoFetchTimer = setTimeout(async () => {
     if (_suppressAutoFetch) return;
-    const vp = getViewportInfo();
+    const vp = await getViewportInfo();
     if (vp.key === _lastAutoKey) return; // same viewport, skip
     _lastAutoKey = vp.key;
     // Re-sort existing articles: in-view first
@@ -1228,7 +1336,7 @@ map.on('moveend zoomend', () => {
     renderList();
     // Auto-fetch new content
     autoFetchForViewport();
-  }, 800);
+  }, 3000);
 });
 
 function sortArticlesByViewport() {
@@ -1246,23 +1354,7 @@ function sortArticlesByViewport() {
 
 async function autoFetchForViewport() {
   if (isFetching) return;
-  const vp = getViewportInfo();
-  if (!vp.regions) {
-    loadByViewport(true);
-  } else {
-    isFetching = true;
-    const btn = document.getElementById('btn-rf');
-    btn.disabled = true;
-    try {
-      await fetchLocalNews(vp.label, vp);
-    } catch(e) {
-      console.warn('Auto-fetch local news failed, trying regional feeds:', e.message);
-      isFetching = false;
-      loadByViewport(true);
-    }
-    isFetching = false;
-    btn.disabled = false;
-  }
+  loadByViewport(true);
 }
 
 // ══════════════════════════════════════════════
@@ -1304,24 +1396,7 @@ function finishLoad(groups, label, accumulate) {
 
 document.getElementById('btn-rf').addEventListener('click', async () => {
   if (isFetching) return;
-  const vp = getViewportInfo();
-
-  if (!vp.regions) {
-    loadByViewport(true);
-  } else {
-    isFetching = true;
-    const btn = document.getElementById('btn-rf');
-    btn.disabled = true;
-    try {
-      await fetchLocalNews(vp.label, vp);
-    } catch(e) {
-      console.warn('Google News failed, falling back to regional feeds:', e.message);
-      isFetching = false;
-      loadByViewport(true);
-    }
-    isFetching = false;
-    btn.disabled = false;
-  }
+  loadByViewport(true);
 });
 
 // Initial load — load feeds config, check Ollama, then fetch news
@@ -1332,7 +1407,7 @@ document.getElementById('btn-rf').addEventListener('click', async () => {
   checkOllama();
   await loadByViewport(false);
   _suppressAutoFetch = false;
-  _lastAutoKey = getViewportInfo().key;
+  _lastAutoKey = (await getViewportInfo()).key;
 })();
 </script>
 </body>
