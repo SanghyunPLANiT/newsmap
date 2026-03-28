@@ -1,12 +1,19 @@
-# ═══════════════════════════════════════════════════════
-# GLOBAL PULSE — Feed Configuration
-# ═══════════════════════════════════════════════════════
-# Add or remove RSS feeds below. The app loads this file
-# on startup. Each feed needs a label and url.
+# ═══════════════════════════════════════════════════════════════
+# GLOBAL PULSE — Hierarchical Feed Configuration
+# ═══════════════════════════════════════════════════════════════
+# Feeds are organized by geographic scope. The app automatically
+# selects feeds based on zoom level and map position:
 #
-# Categories: global, tech, business, science, health, regional
-# ═══════════════════════════════════════════════════════
+#   global    → zoom < 4  (world view)
+#   region    → zoom 4-5  (continent/large region)
+#   subregion → zoom 5-7  (sub-region, e.g. "Western Europe")
+#   national  → zoom 7-9  (country level)
+#   local     → zoom 10+  (city level — uses Google News search)
+#
+# Topic feeds (tech, business, etc.) are mixed in at all levels.
+# ═══════════════════════════════════════════════════════════════
 
+# ── GLOBAL FEEDS (world overview) ────────────────────────────
 global:
   - label: BBC World
     url: https://feeds.bbci.co.uk/news/world/rss.xml
@@ -35,7 +42,8 @@ global:
   - label: Euronews
     url: https://www.euronews.com/rss?level=theme&name=news
 
-tech:
+# ── TOPIC FEEDS (mixed in at all zoom levels) ────────────────
+topic:
   - label: BBC Tech
     url: https://feeds.bbci.co.uk/news/technology/rss.xml
   - label: NY Times Tech
@@ -48,51 +56,366 @@ tech:
     url: https://www.theverge.com/rss/index.xml
   - label: Wired
     url: https://www.wired.com/feed/rss
-  - label: NPR Tech
-    url: https://feeds.npr.org/1019/rss.xml
-
-business:
   - label: BBC Business
     url: https://feeds.bbci.co.uk/news/business/rss.xml
-  - label: NY Times Business
-    url: https://rss.nytimes.com/services/xml/rss/nyt/Business.xml
-  - label: Guardian Business
-    url: https://www.theguardian.com/uk/business/rss
-  - label: DW Business
-    url: https://rss.dw.com/rdf/rss-en-bus
-
-science:
   - label: BBC Science
     url: https://feeds.bbci.co.uk/news/science_and_environment/rss.xml
-  - label: NY Times Science
-    url: https://rss.nytimes.com/services/xml/rss/nyt/Science.xml
-  - label: Guardian Science
-    url: https://www.theguardian.com/science/rss
   - label: Nature
     url: https://www.nature.com/nature.rss
-  - label: NY Times Climate
-    url: https://rss.nytimes.com/services/xml/rss/nyt/Climate.xml
-  - label: Guardian Environment
-    url: https://www.theguardian.com/environment/rss
-
-health:
   - label: BBC Health
     url: https://feeds.bbci.co.uk/news/health/rss.xml
-  - label: NY Times Health
-    url: https://rss.nytimes.com/services/xml/rss/nyt/Health.xml
 
-regional:
+# ═══════════════════════════════════════════════════════════════
+# REGIONAL FEEDS (continent / large region level)
+# ═══════════════════════════════════════════════════════════════
+
+region/europe:
+  - label: BBC Europe
+    url: https://feeds.bbci.co.uk/news/world/europe/rss.xml
+  - label: DW Europe
+    url: https://rss.dw.com/rdf/rss-en-europe
+  - label: Guardian Europe
+    url: https://www.theguardian.com/world/europe-news/rss
+  - label: Euronews
+    url: https://www.euronews.com/rss?level=theme&name=news
+
+region/americas:
+  - label: BBC US/Canada
+    url: https://feeds.bbci.co.uk/news/world/us_and_canada/rss.xml
+  - label: BBC Latin America
+    url: https://feeds.bbci.co.uk/news/world/latin_america/rss.xml
+  - label: NPR News
+    url: https://feeds.npr.org/1001/rss.xml
+
+region/asia:
+  - label: BBC Asia
+    url: https://feeds.bbci.co.uk/news/world/asia/rss.xml
+  - label: DW Asia
+    url: https://rss.dw.com/rdf/rss-en-asia
+  - label: BBC South Asia
+    url: https://feeds.bbci.co.uk/news/world/south_asia/rss.xml
+
+region/middle_east:
+  - label: BBC Middle East
+    url: https://feeds.bbci.co.uk/news/world/middle_east/rss.xml
+  - label: Al Jazeera
+    url: https://www.aljazeera.com/xml/rss/all.xml
+
+region/africa:
+  - label: BBC Africa
+    url: https://feeds.bbci.co.uk/news/world/africa/rss.xml
+
+region/oceania:
+  - label: BBC Australia
+    url: https://feeds.bbci.co.uk/news/world/australia/rss.xml
+  - label: ABC Australia
+    url: https://www.abc.net.au/news/feed/51120/rss.xml
+
+# ═══════════════════════════════════════════════════════════════
+# NATIONAL FEEDS (country-specific)
+# Key format: national/<country_name> (must match PLACES names)
+# ═══════════════════════════════════════════════════════════════
+
+# ── United Kingdom ──
+national/United Kingdom:
+  - label: BBC UK
+    url: https://feeds.bbci.co.uk/news/uk/rss.xml
+  - label: Guardian UK
+    url: https://www.theguardian.com/uk-news/rss
+  - label: Sky News UK
+    url: https://feeds.skynews.com/feeds/rss/uk.xml
+  - label: BBC England
+    url: https://feeds.bbci.co.uk/news/england/rss.xml
+  - label: BBC Scotland
+    url: https://feeds.bbci.co.uk/news/scotland/rss.xml
+  - label: BBC Wales
+    url: https://feeds.bbci.co.uk/news/wales/rss.xml
+  - label: BBC N. Ireland
+    url: https://feeds.bbci.co.uk/news/northern_ireland/rss.xml
+
+# ── Ireland ──
+national/Ireland:
+  - label: RTÉ News
+    url: https://www.rte.ie/feeds/rss/?index=/news/
+  - label: Irish Times
+    url: https://www.irishtimes.com/cmlink/the-irish-times-news-1.1319192
+
+# ── United States ──
+national/United States:
+  - label: NPR News
+    url: https://feeds.npr.org/1001/rss.xml
+  - label: NY Times US
+    url: https://rss.nytimes.com/services/xml/rss/nyt/US.xml
+  - label: Washington Post National
+    url: https://feeds.washingtonpost.com/rss/national
+  - label: AP News
+    url: https://rsshub.app/apnews/topics/apf-topnews
+  - label: PBS NewsHour
+    url: https://www.pbs.org/newshour/feeds/rss/headlines
+  - label: USA Today
+    url: https://rssfeeds.usatoday.com/usatoday-NewsTopStories
+
+# ── Canada ──
+national/Canada:
+  - label: CBC Canada
+    url: https://www.cbc.ca/cmlink/rss-canada
+  - label: Globe and Mail
+    url: https://www.theglobeandmail.com/arc/outboundfeeds/rss/category/canada/
+  - label: CTV News
+    url: https://www.ctvnews.ca/rss/ctvnews-ca-top-stories-public-rss-1.822009
+
+# ── France ──
+national/France:
+  - label: France 24
+    url: https://www.france24.com/en/france/rss
+  - label: The Local France
+    url: https://www.thelocal.fr/feeds/rss.php
+
+# ── Germany ──
+national/Germany:
+  - label: DW Germany
+    url: https://rss.dw.com/rdf/rss-en-ger
+  - label: The Local Germany
+    url: https://www.thelocal.de/feeds/rss.php
+
+# ── Italy ──
+national/Italy:
+  - label: The Local Italy
+    url: https://www.thelocal.it/feeds/rss.php
+
+# ── Spain ──
+national/Spain:
+  - label: The Local Spain
+    url: https://www.thelocal.es/feeds/rss.php
+
+# ── Netherlands ──
+national/Netherlands:
+  - label: DutchNews
+    url: https://www.dutchnews.nl/feed/
+
+# ── Sweden ──
+national/Sweden:
+  - label: The Local Sweden
+    url: https://www.thelocal.se/feeds/rss.php
+
+# ── Norway ──
+national/Norway:
+  - label: The Local Norway
+    url: https://www.thelocal.no/feeds/rss.php
+
+# ── Denmark ──
+national/Denmark:
+  - label: The Local Denmark
+    url: https://www.thelocal.dk/feeds/rss.php
+
+# ── Switzerland ──
+national/Switzerland:
+  - label: The Local Switzerland
+    url: https://www.thelocal.ch/feeds/rss.php
+
+# ── Austria ──
+national/Austria:
+  - label: The Local Austria
+    url: https://www.thelocal.at/feeds/rss.php
+
+# ── Japan ──
+national/Japan:
   - label: NHK World
     url: https://www3.nhk.or.jp/rss/news/cat0.xml
   - label: Japan Times
     url: https://www.japantimes.co.jp/feed/
+  - label: Japan Today
+    url: https://japantoday.com/feed
+
+# ── South Korea ──
+national/South Korea:
+  - label: Korea Herald
+    url: https://www.koreaherald.com/common/rss_xml.php?ct=102
+  - label: Korea Times
+    url: https://www.koreatimes.co.kr/www/rss/nation.xml
+  - label: Yonhap News
+    url: https://en.yna.co.kr/RSS/news.xml
+
+# ── China ──
+national/China:
+  - label: South China Morning Post
+    url: https://www.scmp.com/rss/91/feed
+  - label: China Daily
+    url: https://www.chinadaily.com.cn/rss/china_rss.xml
+
+# ── Taiwan ──
+national/Taiwan:
+  - label: Taiwan News
+    url: https://www.taiwannews.com.tw/en/rss
+
+# ── India ──
+national/India:
   - label: Times of India
     url: https://timesofindia.indiatimes.com/rssfeeds/296589292.cms
   - label: The Hindu
-    url: https://www.thehindu.com/news/international/feeder/default.rss
+    url: https://www.thehindu.com/news/national/feeder/default.rss
+  - label: NDTV News
+    url: https://feeds.feedburner.com/ndtvnews-top-stories
+  - label: India Today
+    url: https://www.indiatoday.in/rss/home
+
+# ── Pakistan ──
+national/Pakistan:
+  - label: Dawn News
+    url: https://www.dawn.com/feeds/home
+  - label: Geo News
+    url: https://www.geo.tv/rss/1/0
+
+# ── Australia ──
+national/Australia:
   - label: ABC Australia
     url: https://www.abc.net.au/news/feed/51120/rss.xml
-  - label: DW Asia
-    url: https://rss.dw.com/rdf/rss-en-asia
-  - label: DW Europe
-    url: https://rss.dw.com/rdf/rss-en-eu
+  - label: Sydney Morning Herald
+    url: https://www.smh.com.au/rss/feed.xml
+  - label: The Australian
+    url: https://www.theaustralian.com.au/feed
+
+# ── New Zealand ──
+national/New Zealand:
+  - label: NZ Herald
+    url: https://www.nzherald.co.nz/arc/outboundfeeds/rss/curated/78/?outputType=xml
+  - label: Stuff NZ
+    url: https://www.stuff.co.nz/rss
+
+# ── Brazil ──
+national/Brazil:
+  - label: Brazil Reports
+    url: https://brazilreports.com/feed/
+
+# ── Mexico ──
+national/Mexico:
+  - label: Mexico News Daily
+    url: https://mexiconewsdaily.com/feed/
+
+# ── Russia ──
+national/Russia:
+  - label: Moscow Times
+    url: https://www.themoscowtimes.com/rss/news
+
+# ── Ukraine ──
+national/Ukraine:
+  - label: Kyiv Independent
+    url: https://kyivindependent.com/feed/
+  - label: Ukrinform
+    url: https://www.ukrinform.net/rss/block-lastnews
+
+# ── Israel ──
+national/Israel:
+  - label: Times of Israel
+    url: https://www.timesofisrael.com/feed/
+  - label: Haaretz
+    url: https://www.haaretz.com/cmlink/1.628765
+
+# ── Turkey ──
+national/Turkey:
+  - label: Daily Sabah
+    url: https://www.dailysabah.com/rssFeed/turkey
+  - label: Hurriyet Daily News
+    url: https://www.hurriyetdailynews.com/rss
+
+# ── Egypt ──
+national/Egypt:
+  - label: Egypt Independent
+    url: https://egyptindependent.com/feed/
+  - label: Al-Monitor Egypt
+    url: https://www.al-monitor.com/rss/egypt
+
+# ── South Africa ──
+national/South Africa:
+  - label: News24
+    url: https://feeds.news24.com/articles/News24/TopStories/rss
+  - label: Daily Maverick
+    url: https://www.dailymaverick.co.za/feed/
+
+# ── Nigeria ──
+national/Nigeria:
+  - label: Punch Nigeria
+    url: https://punchng.com/feed/
+  - label: Premium Times
+    url: https://www.premiumtimesng.com/feed
+
+# ── Kenya ──
+national/Kenya:
+  - label: Nation
+    url: https://nation.africa/kenya/news/rss
+
+# ── Singapore ──
+national/Singapore:
+  - label: Straits Times
+    url: https://www.straitstimes.com/news/singapore/rss.xml
+  - label: Channel NewsAsia
+    url: https://www.channelnewsasia.com/api/v1/rss-outbound-feed?_format=xml
+
+# ── Thailand ──
+national/Thailand:
+  - label: Bangkok Post
+    url: https://www.bangkokpost.com/rss/data/topstories.xml
+
+# ── Philippines ──
+national/Philippines:
+  - label: Rappler
+    url: https://www.rappler.com/feed/
+  - label: Philippine Star
+    url: https://www.philstar.com/rss/headlines
+
+# ── Indonesia ──
+national/Indonesia:
+  - label: Jakarta Post
+    url: https://www.thejakartapost.com/feed
+
+# ── Vietnam ──
+national/Vietnam:
+  - label: VnExpress
+    url: https://e.vnexpress.net/rss/news/latest.rss
+
+# ── Malaysia ──
+national/Malaysia:
+  - label: Malay Mail
+    url: https://www.malaymail.com/feed/rss/malaysia
+
+# ── UAE ──
+national/UAE:
+  - label: Gulf News
+    url: https://gulfnews.com/cmlink/1.446498
+  - label: Khaleej Times
+    url: https://www.khaleejtimes.com/rss
+
+# ── Saudi Arabia ──
+national/Saudi Arabia:
+  - label: Arab News
+    url: https://www.arabnews.com/cat/1/rss.xml
+
+# ── Iran ──
+national/Iran:
+  - label: Tehran Times
+    url: https://www.tehrantimes.com/rss
+
+# ── Argentina ──
+national/Argentina:
+  - label: Buenos Aires Times
+    url: https://www.batimes.com.ar/feed
+
+# ── Colombia ──
+national/Colombia:
+  - label: Colombia Reports
+    url: https://colombiareports.com/feed/
+
+# ── Poland ──
+national/Poland:
+  - label: Notes from Poland
+    url: https://notesfrompoland.com/feed/
+
+# ── Czech Republic ──
+national/Czech Republic:
+  - label: Prague Morning
+    url: https://praguemorning.cz/feed/
+
+# ── Hungary ──
+national/Hungary:
+  - label: Budapest Times
+    url: https://www.budapesttimes.hu/feed/

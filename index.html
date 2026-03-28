@@ -392,8 +392,9 @@ let FEEDS = [
   { label:'CBC News',    url:'https://www.cbc.ca/cmlink/rss-world' },
 ];
 
-// Load feeds from feeds.yaml (handles category groups)
-let ALL_YAML_FEEDS = {};  // category → [{label, url}]
+// Load feeds from feeds.yaml — hierarchical geo-aware config
+// Keys: global, topic, region/<name>, national/<country>
+let ALL_YAML_FEEDS = {};  // key → [{label, url}]
 async function loadFeedsYaml() {
   try {
     const r = await fetch('feeds.yaml', { signal: AbortSignal.timeout(3000) });
@@ -405,9 +406,12 @@ async function loadFeedsYaml() {
     for (const line of text.split('\n')) {
       const trimmed = line.trim();
       if (!trimmed || trimmed.startsWith('#')) continue;
-      // Category header like "global:", "tech:", etc.
-      const catMatch = trimmed.match(/^(\w[\w\s]*):$/);
-      if (catMatch) { currentCat = catMatch[1].trim(); continue; }
+      // Category header: "global:", "region/europe:", "national/South Korea:", etc.
+      const catMatch = trimmed.match(/^([^#][^:]+):$/);
+      if (catMatch && !trimmed.startsWith('- ') && !trimmed.startsWith('url:') && !trimmed.startsWith('label:')) {
+        currentCat = catMatch[1].trim();
+        continue;
+      }
       if (trimmed.startsWith('- label:')) {
         const entry = { label: trimmed.replace('- label:','').trim(), url:'', cat: currentCat };
         parsed.push(entry);
@@ -416,17 +420,90 @@ async function loadFeedsYaml() {
       }
     }
     const valid = parsed.filter(f => f.label && f.url);
-    // Group by category
     for (const f of valid) {
       if (!ALL_YAML_FEEDS[f.cat]) ALL_YAML_FEEDS[f.cat] = [];
       ALL_YAML_FEEDS[f.cat].push(f);
     }
-    // Default FEEDS = global category only (for initial load — fewer requests)
     if (ALL_YAML_FEEDS.global?.length > 0) {
       FEEDS = ALL_YAML_FEEDS.global;
-      console.log(`Loaded ${valid.length} feeds from feeds.yaml (${FEEDS.length} global for initial load)`);
     }
+    console.log(`Loaded ${valid.length} feeds from feeds.yaml across ${Object.keys(ALL_YAML_FEEDS).length} categories`);
   } catch(e) { console.log('feeds.yaml not found, using defaults'); }
+}
+
+// Get feeds for a specific scope level + location
+function getFeedsForScope(scope) {
+  const feeds = [];
+  const seen = new Set();
+  const add = (list) => {
+    if (!list) return;
+    for (const f of list) {
+      if (!seen.has(f.url)) { seen.add(f.url); feeds.push(f); }
+    }
+  };
+
+  if (scope.level === 'global') {
+    add(ALL_YAML_FEEDS.global || FEEDS);
+    add(ALL_YAML_FEEDS.topic);
+    return feeds;
+  }
+
+  // National level: use national feeds for each visible country
+  if (scope.level === 'country' || scope.level === 'city') {
+    for (const c of (scope.countries || [])) {
+      add(ALL_YAML_FEEDS['national/' + c]);
+    }
+    // If we found national feeds, use those (+ topic feeds)
+    if (feeds.length > 0) {
+      add(ALL_YAML_FEEDS.topic);
+      return feeds;
+    }
+    // Fallback: no national feeds configured → will use Google News search
+    return [];
+  }
+
+  // Sub-region level: use region feeds for the relevant regions
+  if (scope.level === 'subregion') {
+    // Map sub-region names to region keys
+    const regionKeys = new Set();
+    for (const c of (scope.countries || [])) {
+      const region = COUNTRY_TO_REGION[c];
+      if (region) regionKeys.add(region);
+    }
+    for (const rk of regionKeys) {
+      // Try to find matching region key in yaml
+      const yamlKey = 'region/' + rk.toLowerCase().replace(/[^a-z]+/g, '_');
+      add(ALL_YAML_FEEDS[yamlKey]);
+    }
+    // Also add national feeds for specific visible countries
+    for (const c of (scope.countries || [])) {
+      add(ALL_YAML_FEEDS['national/' + c]);
+    }
+    if (feeds.length > 0) { add(ALL_YAML_FEEDS.topic); return feeds; }
+    // Fallback to scope.feeds from GEO_HIERARCHY
+    add(scope.feeds);
+    return feeds;
+  }
+
+  // Region level
+  if (scope.level === 'region') {
+    const regionKeys = new Set();
+    for (const c of (scope.countries || [])) {
+      const region = COUNTRY_TO_REGION[c];
+      if (region) regionKeys.add(region);
+    }
+    for (const rk of regionKeys) {
+      const yamlKey = 'region/' + rk.toLowerCase().replace(/[^a-z]+/g, '_');
+      add(ALL_YAML_FEEDS[yamlKey]);
+    }
+    if (feeds.length > 0) { add(ALL_YAML_FEEDS.topic); return feeds; }
+    add(scope.feeds);
+    return feeds;
+  }
+
+  // Fallback
+  add(scope.feeds);
+  return feeds;
 }
 
 function stripTags(html) {
@@ -697,13 +774,37 @@ async function fetchLocalNews(queryLabel, vp) {
   const total = Math.min(allFresh.length, 30);
 
   for (let i = 0; i < total; i++) {
+    // Check if viewport changed — abort geocoding for this region
+    if (_fetchAbort.signal.aborted) {
+      console.log(`Geocoding cancelled at ${i}/${total} (viewport changed)`);
+      break;
+    }
+
     const a = allFresh[i];
     setStatus(`Geocoding ${i + 1}/${total}: ${a._queryCountry || queryLabel}…`);
 
     // Try Ollama first, then keyword fallback
     if (!a.place && ollamaModel) {
-      const geo = await ollamaGeocode(a.title, stripTags(a.desc).slice(0, 200));
-      if (geo) a.place = geo;
+      try {
+        const geo = await ollamaGeocode(a.title, stripTags(a.desc).slice(0, 200));
+        if (geo) a.place = geo;
+      } catch(e) {
+        if (_fetchAbort.signal.aborted) break;
+      }
+    }
+
+    // If still no place, assign from the query city/country
+    if (!a.place) {
+      // Try to find the query label in PLACES or use viewport center
+      const queryCity = vp?.cities?.find(c => c.city === a._queryCountry);
+      if (queryCity) {
+        a.place = { n: queryCity.city, lat: queryCity.lat, lng: queryCity.lng, c: '#e74c3c' };
+      } else {
+        const placeMatch = PLACES.find(p => p.n === a._queryCountry);
+        if (placeMatch) {
+          a.place = { n: placeMatch.n, lat: placeMatch.lat, lng: placeMatch.lng, c: placeMatch.c };
+        }
+      }
     }
 
     // Filter out articles too far from current view
@@ -1295,16 +1396,46 @@ async function loadByViewport(accumulate) {
 
   try {
     const scope = vp.scope;
-    if (scope.level === 'country' || scope.level === 'city') {
-      // Country/city-level: use Google News per country/city + Ollama geocoding
+    // Get feeds from hierarchical YAML config
+    const yamlFeeds = getFeedsForScope(scope);
+
+    if (scope.level === 'city') {
+      // City-level: Google News search by city name + Ollama geocoding
+      // Also fetch national feeds if available
+      if (yamlFeeds.length > 0) {
+        const rssArticles = await loadFeedsBatched(yamlFeeds.slice(0, 4), 2);
+        finishLoad([rssArticles], vp.label, true);
+      }
       await fetchLocalNews(vp.label, vp);
+    } else if (scope.level === 'country') {
+      // Country-level: national RSS feeds + Google News fallback
+      if (yamlFeeds.length > 0) {
+        const all = await loadFeedsBatched(yamlFeeds.slice(0, 8), 2);
+        finishLoad([all], vp.label, accumulate);
+        // Also fetch Google News for countries without national feeds
+        const countriesWithFeeds = new Set();
+        for (const c of (scope.countries || [])) {
+          if (ALL_YAML_FEEDS['national/' + c]?.length > 0) countriesWithFeeds.add(c);
+        }
+        const countriesWithout = (scope.countries || []).filter(c => !countriesWithFeeds.has(c));
+        if (countriesWithout.length > 0) {
+          await fetchLocalNews(vp.label, { ...vp, countries: countriesWithout });
+        }
+      } else {
+        // No national feeds → full Google News search
+        await fetchLocalNews(vp.label, vp);
+      }
+    } else if (yamlFeeds.length > 0) {
+      // Sub-region / region level: use yaml feeds
+      const all = await loadFeedsBatched(yamlFeeds.slice(0, 10), 2);
+      finishLoad([all], vp.label, accumulate);
     } else if (scope.feeds && scope.feeds.length > 0) {
-      // Sub-region or region level: use editorial RSS feeds
+      // Fallback: GEO_HIERARCHY feeds
       const all = await loadFeedsBatched(scope.feeds, 2);
       finishLoad([all], vp.label, accumulate);
     } else {
       // Global
-      const feedsToFetch = FEEDS.slice(0, 8);
+      const feedsToFetch = (ALL_YAML_FEEDS.global || FEEDS).slice(0, 8);
       const all = await loadFeedsBatched(feedsToFetch, 2);
       finishLoad([all], vp.label, accumulate);
     }
